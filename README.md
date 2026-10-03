@@ -27,7 +27,7 @@ All jobs run on `pull_request` and on `push` to `main`.
 | `quality` | Detects pnpm / yarn / npm (via corepack) or Python. Runs install (frozen lockfile), then `lint`, `type-check`/`typecheck`, `test`, `build` if those scripts exist; Python uses ruff, mypy, and pytest when configured. Missing tests fail unless `require-tests: false`. Optional `extra-command` runs repo-specific gates, e.g. `pnpm validate:all`. | `ci.yml`, `.claude/hooks/verify-before-stop.mjs` |
 | `policy` | `AGENTS.md` contains the `AI-GOVERNANCE:v1` section. CODEOWNERS has a global `*` owner. Every workflow has a `permissions:` block and SHA-pinned `uses:`. On PRs: the title follows Conventional Commits, and the body references an issue. A missing reference is a warning by default and an error for code PRs or when `require-issue-reference: true`. The **spec gate** (below) runs on every PR. Structural changes need a valid `SYSTEMS_THINKING_CONTRACT` covering every structural path (`auto` = enforced when `.systems-thinking/contracts/` exists). If governance files change, a notice flags that code-owner review is needed. | `AGENTS.md`, `CLAUDE.md`, `CODEOWNERS`, `.husky/commit-msg`, PR template, `validate-security-baseline.js`, `.systems-thinking/` |
 | `secret-scan` | gitleaks 8.30.1 binary, pinned by checksum, over the **whole PR commit range** (not just the tip). Uses the repo's `.gitleaks.toml` if it has one. Fails closed. | `secret-scan.yml`, `.gitleaks.toml` |
-| `verdict` | A single aggregate check that fails closed. **Make this the one required status check.** | n/a |
+| `verdict` | A single aggregate check that fails closed. **Make this the one required status check.** It also publishes the scorecard (see below). | n/a |
 
 The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes in repos that set "allowed actions: selected" and "require SHA pinning".
 
@@ -38,7 +38,7 @@ The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes
 | Role | Who | May |
 | --- | --- | --- |
 | `spec-author` | Kiro (`kiro-agent[bot]`); KyPython as owner override | write specs and requirements in spec-only PRs |
-| `coder` | Codex (`chatgpt-codex-connector[bot]`, `codex`), Cursor (`cursor[bot]`), Copilot, Claude, Grok Bot, … | implement specs that already exist on `main` |
+| `coder` | Kiro's builders (`kiro-agent[bot]`), Codex (`chatgpt-codex-connector[bot]`, `codex`), Cursor (`cursor[bot]`), Copilot, Claude, Grok Bot, … | implement specs that already exist on `main`; a code PR never touches spec paths, even when Kiro writes it |
 | `approver` | KyPython | review and merge (enforced by branch protection: agents can't merge) |
 
 Every PR that changes a **code path** fails `policy` (and therefore `verdict`) unless all of these hold:
@@ -75,6 +75,45 @@ Labels, branch names (including `dependabot/*`), and authors never exempt a PR, 
 - park-city-studios `REQUIREMENTS_TRACEABILITY.md`;
 - human-rebuild-bootcamp `GOLDEN_SPEC.md`: `[R-SPEC-F1]` requirement IDs plus acceptance oracles;
 - ky-cloud-control-plane's Kiro-first spec gate: Kiro drafts requirements, Ky approves the exact sentences.
+
+### Workflow: one coder per task, cross-reviewed
+
+1. **Kiro writes the spec** (`requirements.md`, `design.md`, `tasks.md`) in a spec-only PR. Ky merges it.
+2. **Each task in `tasks.md` goes to one coder**, in its own PR that cites `Spec: specs/<slug>` and the task's criterion IDs.
+3. **A different agent reviews that PR**: for example, Codex reviews Cursor's PR and Cursor reviews Codex's. The gate checks the code; the reviewer checks intent against the requirement sentences.
+4. **Ky merges** once `verdict` and the repo's CI are green and review threads are resolved.
+
+Coders cooperate rather than compete. Sometimes the same task is built head-to-head by two coders, purely for learning; the scorecard below makes that comparison cheap.
+
+### Scorecard (machine-readable verdict summary)
+
+Every run's `verdict` job publishes the same JSON (schema `ai-governance-summary/v1`) in three places:
+
+- the run's **job summary**, as a one-row table plus the JSON;
+- a **`ai-governance-summary` artifact** (`ai-governance-summary.json`, kept 90 days);
+- the reusable workflow's **`summary` output**, also printed as a log line starting `AI_GOVERNANCE_SUMMARY `.
+
+```json
+{
+  "schema": "ai-governance-summary/v1",
+  "repo": "KyPython/effectproof", "pr": 21, "pr_author": "cursor[bot]", "head_sha": "…",
+  "verdict": "pass", "jobs": {"quality": "success", "policy": "success", "secret-scan": "success"},
+  "failed_checks": 0, "failed_check_names": [], "policy_errors": 0,
+  "tests": {"passed": 46, "failed": 0, "total": 46},
+  "spec": ["specs/ai-governance-gate"], "requirement_ids": ["GOV-1.1", "GOV-1.2", "GOV-1.3", "GOV-2.1", "GOV-3.1"],
+  "changed_lines": {"added": 50, "deleted": 0, "total": 50}, "files_changed": 2,
+  "run_url": "https://github.com/…/actions/runs/…"
+}
+```
+
+What each field means:
+
+- **`tests`** is parsed from the test output of the quality job and the `extra-command`. Supported runners: Jest, Vitest, pytest, unittest, node:test and Mocha; counts are summed across monorepo packages. The values are `null` when the runner's output isn't recognized, or when tests didn't run (for example, lint failed first).
+- **`requirement_ids`** are the spec IDs cited by the PR's changed tests.
+- **`failed_checks`** counts the gate jobs that didn't succeed, and `policy_errors` counts policy findings.
+- **`changed_lines`** counts the PR diff against the merge-base, excluding lockfiles.
+
+The scorecard only reports; the pass/fail decision never reads it. Use it to see at a glance what a PR covered, to check a reviewer's claims, or to compare an occasional head-to-head. Example: `gh run download <run-id> -n ai-governance-summary`.
 
 ### Inputs
 
@@ -129,3 +168,7 @@ For hosted deploys (Vercel, Cloudflare, etc.), restrict production deploys to th
 - The protection model has no approval requirement on purpose: agents push with Ky's account, and GitHub never lets authors approve their own PRs. The checks are the gate. Branch protection cannot stop a holder of Ky's admin token from merging their own PR once checks pass. That rule lives in AGENTS.md, so keep agents' tokens scoped where possible.
 - (Historical) GitHub enforces "Ky approves" only when the PR author is **not** Ky's own account, because GitHub never lets authors approve their own PRs. If agents push and open PRs with Ky's personal token, the PR is authored by `KyPython`. With `enforce_admins` on, it can then never collect the required approval. With admin bypass on, anything holding Ky's admin token, agents included, can bypass. The robust fix is to give agents their own identity (a GitHub App / bot account, or the Cursor/Codex GitHub apps) with write access but not admin, so Ky's review is the real gate.
 - Branch protection and rulesets on **private** repos need a paid plan. The KyPython account is on Pro, so its private repos work. The `KyLamportLogic` org is on Free, so its private repos return `403 Upgrade to GitHub Pro or make this repository public`; fixing that needs GitHub Team, $4/user/month. Org-wide rulesets also need Team, and "require workflows" rulesets need Enterprise.
+- **The role gate proves declared identities only.** See "What the role gate can and cannot prove" above. While agents push with Ky's token, the gate cannot tell an agent from Ky. Giving each agent its own GitHub identity is what makes `roles.yml` fully enforceable.
+- **Cross-review by a different agent is a workflow rule, not a gate check.** The gate does not verify who reviewed a PR.
+- **The scorecard is best-effort.** Test counts depend on recognizing the runner's output; anything else reports `null`. It never affects the verdict.
+- **`roles.yml` is read from `main` at run time**, unlike the SHA-pinned workflow. A role change by Ky applies everywhere at once. If raw.githubusercontent.com is unreachable, verdicts fail closed.

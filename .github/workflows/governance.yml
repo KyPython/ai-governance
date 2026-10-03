@@ -76,6 +76,9 @@ on:
       verdict:
         description: "pass or fail"
         value: ${{ jobs.verdict.outputs.verdict }}
+      summary:
+        description: "Scorecard JSON (schema ai-governance-summary/v1); also in the job summary and the ai-governance-summary artifact"
+        value: ${{ jobs.verdict.outputs.summary }}
 
 permissions:
   contents: read
@@ -92,6 +95,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      tests_passed: ${{ steps.tests.outputs.passed }}
+      tests_failed: ${{ steps.tests.outputs.failed }}
+      tests_total: ${{ steps.tests.outputs.total }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -152,7 +159,7 @@ jobs:
             if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
             if uses_tool mypy mypy.ini; then mypy . && summary "type-check: mypy passed"; else summary "type-check: mypy not configured - skipped"; fi
             if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then
-              pytest && summary "test: pytest passed"
+              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log" && summary "test: pytest passed"
             elif [ "$REQUIRE_TESTS" = "true" ]; then
               echo "::error::No tests found (tests/, test/ or test_*.py). AI-authored changes must ship with tests."
               exit 1
@@ -183,7 +190,7 @@ jobs:
           elif has_script typecheck; then run_script typecheck; summary "typecheck: passed"
           else summary "type-check: no \`type-check\`/\`typecheck\` script - skipped"; fi
 
-          if has_script test; then run_script test; summary "test: passed"
+          if has_script test; then run_script test 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"; summary "test: passed"
           elif [ "$REQUIRE_TESTS" = "true" ]; then
             echo "::error::No \`test\` script in package.json. AI-authored changes must ship with tests."
             exit 1
@@ -198,8 +205,53 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running: ${EXTRA_COMMAND}"
-          bash -c "${EXTRA_COMMAND}"
+          bash -c "${EXTRA_COMMAND}" 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
           echo "- extra: \`${EXTRA_COMMAND}\` passed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Parse test results (scorecard)
+        id: tests
+        if: always()
+        shell: python3 {0}
+        run: |
+          # TEST-PARSER: best-effort counts from Jest, Vitest, pytest, unittest, node:test and Mocha output.
+          import os, re
+          from pathlib import Path
+          def parse(text):
+              text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+              p = f = t = 0; seen = False; ut_ran = None
+              def n(rx, line):
+                  m = re.search(rx, line); return int(m.group(1)) if m else 0
+              for line in text.splitlines():
+                  s = line.strip()
+                  if re.match(r"^Tests:\s.*\btotal\b", s):                                   # Jest
+                      seen = True; p += n(r"(\d+) passed", s); f += n(r"(\d+) failed", s); t += n(r"(\d+) total", s)
+                  elif re.match(r"^Tests\s+.*\(\d+\)$", s):                                  # Vitest
+                      seen = True; p += n(r"(\d+) passed", s); f += n(r"(\d+) failed", s); t += n(r"\((\d+)\)$", s)
+                  elif re.match(r"^=+ .*\b(passed|failed|errors?)\b.* in [\d.]+s.*=+$", s):   # pytest
+                      seen = True; ok_, bad = n(r"(\d+) passed", s), n(r"(\d+) failed", s) + n(r"(\d+) errors?", s)
+                      p += ok_; f += bad; t += ok_ + bad + n(r"(\d+) skipped", s)
+                  elif re.match(r"^Ran \d+ tests? in ", s):                                    # unittest
+                      ut_ran = n(r"Ran (\d+)", s)
+                  elif ut_ran is not None and re.match(r"^(OK|FAILED)\b", s):
+                      seen = True; bad = n(r"failures=(\d+)", s) + n(r"errors=(\d+)", s); skip = n(r"skipped=(\d+)", s)
+                      t += ut_ran; f += bad; p += ut_ran - bad - skip; ut_ran = None
+                  elif re.match(r"^(#|ℹ) tests \d+$", s):                                      # node:test
+                      seen = True; t += n(r"tests (\d+)", s)
+                  elif re.match(r"^(#|ℹ) pass \d+$", s):
+                      p += n(r"pass (\d+)", s)
+                  elif re.match(r"^(#|ℹ) fail \d+$", s):
+                      f += n(r"fail (\d+)", s)
+                  elif re.match(r"^\d+ passing\b", s):                                         # Mocha
+                      seen = True; p += n(r"(\d+) passing", s); t += n(r"(\d+) passing", s)
+                  elif re.match(r"^\d+ failing\b", s):
+                      f += n(r"(\d+) failing", s); t += n(r"(\d+) failing", s)
+              return (p, f, t) if seen else None
+          log = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "test-output.log"
+          r = parse(log.read_text(errors="replace")) if log.is_file() else None
+          with open(os.environ["GITHUB_OUTPUT"], "a") as o:
+              if r:
+                  o.write(f"passed={r[0]}\nfailed={r[1]}\ntotal={r[2]}\n")
+          print("tests:", r or "not recognized")
 
   policy:
     name: policy
@@ -207,6 +259,13 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      requirement_ids: ${{ steps.policy.outputs.requirement_ids }}
+      spec: ${{ steps.policy.outputs.spec }}
+      policy_errors: ${{ steps.policy.outputs.policy_errors }}
+      lines_added: ${{ steps.policy.outputs.lines_added }}
+      lines_deleted: ${{ steps.policy.outputs.lines_deleted }}
+      files_changed: ${{ steps.policy.outputs.files_changed }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -214,6 +273,7 @@ jobs:
           persist-credentials: false
 
       - name: Governance policy checks
+        id: policy
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -246,6 +306,7 @@ jobs:
           event = os.environ.get("EVENT_NAME", "")
           is_pr = event.startswith("pull_request")
           MARKER = "AI-GOVERNANCE:v1"
+          covered_ids, spec_refs = set(), []  # scorecard
 
           # 0. Role map (KyPython/ai-governance/roles.yml). Fails closed if it cannot be read.
           def parse_roles(text):
@@ -487,7 +548,7 @@ jobs:
                       if not found:
                           err(f"Spec gate: `{req}` has no numbered EARS acceptance criteria (e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`).")
                           continue
-                      ids |= found; valid.append(req)
+                      ids |= found; valid.append(req); spec_refs.append(folder)
                   if not folders:
                       err("Spec gate: code changed but the PR body references no spec. Add a line `Spec: specs/<slug>` (or `.kiro/specs/<slug>`) naming a spec that already exists on the base branch.")
                   elif valid:
@@ -504,7 +565,7 @@ jobs:
                           text = t + "\n" + Path(t).read_text(encoding="utf-8", errors="replace")
                           hits = {i for i, rx in pats.items() if rx.search(text)}
                           if hits:
-                              traced[t] = sorted(hits)
+                              traced[t] = sorted(hits); covered_ids.update(hits)
                       if traced:
                           ok("traceability: " + "; ".join(f"{t} -> {', '.join(h)}" for t, h in traced.items()))
                       elif tests:
@@ -561,6 +622,28 @@ jobs:
               for p in passed: s.write(f"- PASS {p}\n")
               for w in warnings: s.write(f"- WARN {w}\n")
               for e in errors: s.write(f"- FAIL {e}\n")
+
+          # Scorecard outputs (read by the verdict job). Changed lines exclude lockfiles.
+          if is_pr:
+              mb = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+              rng = f"{mb}..{os.environ.get('PR_HEAD_SHA', '')}" if mb else ""
+          else:
+              b4 = os.environ.get("PUSH_BEFORE", "")
+              rng = f"{b4}..{os.environ.get('PUSH_AFTER', '')}" if b4 and set(b4) != {"0"} else ""
+          added = deleted = files = 0
+          for row in (git("diff", "--numstat", rng).splitlines() if rng else []):
+              parts = row.split("\t")
+              if len(parts) < 3:
+                  continue
+              files += 1
+              if re.search(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|uv\.lock|Cargo\.lock|go\.sum)$", parts[2]):
+                  continue
+              added += int(parts[0]) if parts[0].isdigit() else 0
+              deleted += int(parts[1]) if parts[1].isdigit() else 0
+          if os.environ.get("GITHUB_OUTPUT"):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as o:
+                  o.write(f"requirement_ids={','.join(sorted(covered_ids))}\nspec={','.join(spec_refs)}\npolicy_errors={len(errors)}\n"
+                          f"lines_added={added}\nlines_deleted={deleted}\nfiles_changed={files}\n")
           sys.exit(1 if errors else 0)
 
   secret-scan:
@@ -625,7 +708,79 @@ jobs:
     permissions: {}
     outputs:
       verdict: ${{ steps.v.outputs.verdict }}
+      summary: ${{ steps.card.outputs.summary }}
     steps:
+      - name: Scorecard (machine-readable summary)
+        id: card
+        if: always()
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          POLICY: ${{ needs.policy.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+          RUN_QUALITY: ${{ inputs.run-quality }}
+          TESTS_PASSED: ${{ needs.quality.outputs.tests_passed }}
+          TESTS_FAILED: ${{ needs.quality.outputs.tests_failed }}
+          TESTS_TOTAL: ${{ needs.quality.outputs.tests_total }}
+          REQUIREMENT_IDS: ${{ needs.policy.outputs.requirement_ids }}
+          SPEC: ${{ needs.policy.outputs.spec }}
+          POLICY_ERRORS: ${{ needs.policy.outputs.policy_errors }}
+          LINES_ADDED: ${{ needs.policy.outputs.lines_added }}
+          LINES_DELETED: ${{ needs.policy.outputs.lines_deleted }}
+          FILES_CHANGED: ${{ needs.policy.outputs.files_changed }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: python3 {0}
+        run: |
+          # SCORECARD: reports only; it never changes the verdict. Schema: ai-governance-summary/v1.
+          import json, os
+          e = os.environ.get
+          def num(k):
+              v = e(k) or ""; return int(v) if v.isdigit() else None
+          def lst(k):
+              return [x for x in (e(k) or "").split(",") if x]
+          jobs = {"quality": e("QUALITY") or "unknown", "policy": e("POLICY") or "unknown", "secret-scan": e("SECRETS") or "unknown"}
+          failed = [j for j, r in jobs.items() if r != "success" and not (j == "quality" and r == "skipped" and e("RUN_QUALITY") == "false")]
+          added, deleted = num("LINES_ADDED"), num("LINES_DELETED")
+          card = {
+              "schema": "ai-governance-summary/v1",
+              "repo": e("REPO"), "pr": num("PR_NUMBER"), "pr_author": e("PR_AUTHOR") or None, "head_sha": e("HEAD_SHA"),
+              "verdict": "pass" if not failed else "fail",
+              "jobs": jobs, "failed_checks": len(failed), "failed_check_names": failed,
+              "policy_errors": num("POLICY_ERRORS"),
+              "tests": {"passed": num("TESTS_PASSED"), "failed": num("TESTS_FAILED"), "total": num("TESTS_TOTAL")},
+              "spec": lst("SPEC"), "requirement_ids": lst("REQUIREMENT_IDS"),
+              "changed_lines": {"added": added, "deleted": deleted, "total": None if added is None else added + (deleted or 0)},
+              "files_changed": num("FILES_CHANGED"),
+              "run_url": e("RUN_URL"),
+          }
+          blob = json.dumps(card, separators=(",", ":"))
+          with open("ai-governance-summary.json", "w") as f:
+              json.dump(card, f, indent=2)
+          if e("GITHUB_OUTPUT"):
+              with open(e("GITHUB_OUTPUT"), "a") as o:
+                  o.write(f"summary={blob}\n")
+          t = card["tests"]
+          tests = "not recognized" if t["total"] is None else f"{t['passed']}/{t['total']}" + (f" ({t['failed']} failed)" if t["failed"] else "")
+          if e("GITHUB_STEP_SUMMARY"):
+              with open(e("GITHUB_STEP_SUMMARY"), "a") as s:
+                  s.write("### ai-governance scorecard\n\n| verdict | tests passed/total | requirement IDs covered | failed checks | changed lines (+/-) | files |\n|---|---|---|---|---|---|\n")
+                  s.write(f"| {card['verdict']} | {tests} | {', '.join(card['requirement_ids']) or '-'} | {card['failed_checks']} | "
+                          f"{card['changed_lines']['total']} (+{added}/-{deleted}) | {card['files_changed']} |\n\n")
+                  s.write("```json\n" + json.dumps(card, indent=2) + "\n```\n")
+          print("AI_GOVERNANCE_SUMMARY " + blob)
+
+      - name: Upload scorecard artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ai-governance-summary
+          path: ai-governance-summary.json
+          retention-days: 90
+          if-no-files-found: warn
+
       - id: v
         env:
           QUALITY: ${{ needs.quality.result }}

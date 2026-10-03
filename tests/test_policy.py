@@ -9,7 +9,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = (ROOT / ".github/workflows/governance.yml").read_text()
-POLICY = textwrap.dedent(WORKFLOW.split("shell: python3 {0}\n        run: |\n", 1)[1].split("\n  secret-scan:", 1)[0])
+def step_script(after, until):
+    """The Python body of the first `shell: python3 {0}` step after `after`, up to `until`."""
+    tail = WORKFLOW.split(after, 1)[1]
+    return textwrap.dedent(tail.split("shell: python3 {0}\n        run: |\n", 1)[1].split(until, 1)[0])
+
+
+POLICY = step_script("- name: Governance policy checks", "\n  secret-scan:")
+TEST_PARSER = step_script("- name: Parse test results (scorecard)", "\n  policy:")
+SCORECARD = step_script("- name: Scorecard (machine-readable summary)", "\n      - name: Upload scorecard artifact")
 TEMPLATE = (ROOT / "templates/ai-governance.yml").read_text()
 ROLES = ROOT / "roles.yml"
 
@@ -56,13 +64,13 @@ class Repo:
         return sh(self.dir, "git", "rev-parse", "HEAD")
 
     def policy(self, body="Closes #1\n\nSpec: specs/demo", title="feat(app): change", head_ref="feature",
-               author=KY, committer=None, opener="KyPython", repo="KyPython/demo", roles=ROLES):
+               author=KY, committer=None, opener="KyPython", repo="KyPython/demo", roles=ROLES, output=None):
         head = self.commit("change", author, committer)
         summary = self.dir / ".summary"
         env = dict(os.environ, EVENT_NAME="pull_request", PR_TITLE=title, PR_BODY=body, PR_BASE_SHA=self.base,
                    PR_HEAD_SHA=head, PR_HEAD_REF=head_ref, PUSH_BEFORE="", PUSH_AFTER=head, REQUIRE_ISSUE="false",
                    ENFORCE_TITLE="true", STC_MODE="off", BASELINE_MODE="changed", PR_AUTHOR=opener, REPO=repo,
-                   ROLES_FILE=str(roles), GITHUB_STEP_SUMMARY=str(summary))
+                   ROLES_FILE=str(roles), GITHUB_STEP_SUMMARY=str(summary), GITHUB_OUTPUT=str(output or os.devnull))
         p = subprocess.run(["python3", "-c", POLICY], cwd=self.dir, env=env, capture_output=True, text=True)
         summary.unlink(missing_ok=True)
         return p.returncode, p.stdout + p.stderr
@@ -219,6 +227,86 @@ class RoleGate(Base):
         names = re.findall(r"(?m)^      ([\w-]+):$", inputs)
         self.assertIn("require-tests", names)
         self.assertFalse([n for n in names if "spec" in n or "role" in n], names)
+
+
+class KiroAsCoder(Base):
+    def test_GATE_3_6_kiro_code_pr_implementing_base_spec_passes(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "// DEMO-1.1\n"})
+        code, out = r.policy(author=KIRO, opener="kiro-agent[bot]")
+        self.assertEqual(code, 0, out)
+
+
+class Scorecard(Base):
+    def run_script(self, script, env, cwd):
+        p = subprocess.run(["python3", "-c", script], cwd=cwd, env=dict(os.environ, **env), capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+
+    def test_GATE_4_2_policy_reports_ids_spec_errors_and_changed_lines(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\nexport const y = 3;\n", "tests/app.test.js": "// DEMO-1.1\n",
+                                       "pnpm-lock.yaml": "lockfileVersion: '9.0'\n" * 50})
+        out_file = r.dir / ".out"
+        code, out = r.policy(output=out_file)
+        self.assertEqual(code, 0, out)
+        got = dict(l.split("=", 1) for l in out_file.read_text().splitlines())
+        self.assertEqual(got["requirement_ids"], "DEMO-1.1"); self.assertEqual(got["spec"], "specs/demo")
+        self.assertEqual(got["policy_errors"], "0"); self.assertEqual(got["files_changed"], "3")
+        # src/app.js: +2/-1, tests/app.test.js: +1; the lockfile's 50 lines are excluded
+        self.assertEqual((got["lines_added"], got["lines_deleted"]), ("3", "1"))
+
+    def test_GATE_4_3_parses_common_test_runner_output(self):
+        samples = {
+            "Tests:       1 failed, 45 passed, 46 total\n": (45, 1, 46),                           # Jest
+            " Test Files  2 passed (2)\n      Tests  2 failed | 10 passed (12)\n": (10, 2, 12),   # Vitest
+            "=========== 7 passed, 1 failed, 2 skipped in 0.12s ===========\n": (7, 1, 10),       # pytest
+            "Ran 28 tests in 1.6s\n\nFAILED (failures=2, errors=1)\n": (25, 3, 28),             # unittest
+            "# tests 5\n# suites 1\n# pass 4\n# fail 1\n": (4, 1, 5),                          # node:test
+            "  9 passing (20ms)\n  1 failing\n": (9, 1, 10),                                    # Mocha
+            "\x1b[1mTests:\x1b[22m 3 passed, 3 total\nTests:       2 passed, 2 total\n": (5, 0, 5),  # ANSI + monorepo sum
+        }
+        for text, (p, f, t) in samples.items():
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as d:
+                Path(d, "test-output.log").write_text(text); out = Path(d, "out")
+                code, log = self.run_script(TEST_PARSER, {"RUNNER_TEMP": d, "GITHUB_OUTPUT": str(out)}, d)
+                self.assertEqual(code, 0, log)
+                self.assertEqual(out.read_text(), f"passed={p}\nfailed={f}\ntotal={t}\n")
+
+    def test_GATE_4_3_unrecognized_output_reports_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "test-output.log").write_text("all good\n"); out = Path(d, "out")
+            code, log = self.run_script(TEST_PARSER, {"RUNNER_TEMP": d, "GITHUB_OUTPUT": str(out)}, d)
+            self.assertEqual(code, 0, log); self.assertFalse(out.exists() and out.read_text().strip())
+
+    def test_GATE_4_1_scorecard_json_output_and_job_summary(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {"QUALITY": "success", "POLICY": "success", "SECRETS": "success", "RUN_QUALITY": "true",
+                   "TESTS_PASSED": "45", "TESTS_FAILED": "1", "TESTS_TOTAL": "46", "REQUIREMENT_IDS": "GOV-1.1,GOV-1.2",
+                   "SPEC": "specs/gov", "POLICY_ERRORS": "0", "LINES_ADDED": "30", "LINES_DELETED": "4", "FILES_CHANGED": "3",
+                   "REPO": "KyPython/demo", "PR_NUMBER": "7", "PR_AUTHOR": "cursor[bot]", "HEAD_SHA": "abc", "RUN_URL": "u",
+                   "GITHUB_OUTPUT": str(Path(d, "out")), "GITHUB_STEP_SUMMARY": str(Path(d, "sum"))}
+            code, log = self.run_script(SCORECARD, env, d)
+            self.assertEqual(code, 0, log)
+            card = json.loads(Path(d, "ai-governance-summary.json").read_text())
+            self.assertEqual(card["schema"], "ai-governance-summary/v1")
+            self.assertEqual(card["tests"], {"passed": 45, "failed": 1, "total": 46})
+            self.assertEqual(card["requirement_ids"], ["GOV-1.1", "GOV-1.2"]); self.assertEqual(card["failed_checks"], 0)
+            self.assertEqual(card["changed_lines"], {"added": 30, "deleted": 4, "total": 34}); self.assertEqual(card["pr"], 7)
+            self.assertEqual(json.loads(Path(d, "out").read_text().split("summary=", 1)[1]), card)
+            self.assertIn("| pass | 45/46 (1 failed) | GOV-1.1, GOV-1.2 | 0 | 34 (+30/-4) | 3 |", Path(d, "sum").read_text())
+            self.assertIn("AI_GOVERNANCE_SUMMARY {", log)
+
+    def test_GATE_4_4_scorecard_counts_failures_but_never_fails_itself(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {"QUALITY": "failure", "POLICY": "success", "SECRETS": "cancelled", "RUN_QUALITY": "true",
+                   "GITHUB_OUTPUT": str(Path(d, "out")), "GITHUB_STEP_SUMMARY": str(Path(d, "sum"))}
+            code, log = self.run_script(SCORECARD, env, d)
+            self.assertEqual(code, 0, log)
+            card = json.loads(Path(d, "ai-governance-summary.json").read_text())
+            self.assertEqual(card["verdict"], "fail"); self.assertEqual(card["failed_checks"], 2)
+            self.assertEqual(card["tests"]["total"], None); self.assertEqual(card["changed_lines"]["total"], None)
+
+    def test_GATE_4_4_verdict_decision_does_not_read_the_scorecard(self):
+        verdict_step = WORKFLOW.split("      - id: v\n", 1)[1]
+        self.assertNotIn("card", verdict_step); self.assertNotIn("summary=", verdict_step)
 
 
 class CallerTemplate(unittest.TestCase):
