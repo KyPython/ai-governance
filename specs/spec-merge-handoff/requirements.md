@@ -63,7 +63,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 
 #### Acceptance Criteria
 
-1. HANDOFF-5.1 The system SHALL parse `tasks.md` checklist lines of the form `- [ ] N. <task> (<ID>, ...)` into a task id `N`, the task text, and the list of referenced requirement IDs.
+1. HANDOFF-5.1 The system SHALL parse `tasks.md` checklist lines of the form `- [ ] N. <task> (<ID>, ...) [— coder: <name>]`, where the `— coder: <name>` tail is optional, into a task id `N`, the task text, the list of referenced requirement IDs, and the optional coder name.
 2. HANDOFF-5.2 WHEN a task line names its coder (for example `— coder: <name>`) THEN the system SHALL use that coder as the issue label.
 3. HANDOFF-5.3 WHEN a task line names no coder THEN the system SHALL default the coder, and therefore the label, to `codex`.
 4. HANDOFF-5.4 IF `specs/<slug>/tasks.md` is missing or cannot be parsed into at least one task THEN the system SHALL fail clearly for that repo and open no issues for that spec.
@@ -75,7 +75,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 #### Acceptance Criteria
 
 1. HANDOFF-6.1 WHEN the system opens a task issue THEN the issue body SHALL include a stable marker `<!-- spec-task: <slug>#<task-id> -->`.
-2. HANDOFF-6.2 WHEN the system considers creating a task issue THEN it SHALL first search the target repo's existing issues for that task's marker and SHALL NOT create a new issue when the marker already exists.
+2. HANDOFF-6.2 WHEN the system considers creating a task issue THEN it SHALL first search the target repo's existing issues, spanning both open and closed issues, for that task's marker and SHALL NOT create a new issue when the marker already exists, so that a later scheduled scan after a task issue has been closed does not create a duplicate.
 3. HANDOFF-6.3 WHEN the handoff runs again for the same spec and commit (a re-run, a later scheduled scan, or a manual dispatch) THEN the system SHALL create zero additional issues.
 
 ### Requirement 7: At-most-once @codex comment (HANDOFF-7)
@@ -128,7 +128,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 
 #### Acceptance Criteria
 
-1. HANDOFF-11.1 The system's implementation SHALL ship automated Python tests, run by this repo's quality (`pytest`) job, covering: `tasks.md` parsing, the coder-label default, the idempotency marker, at-most-once commenting, the missing-secret failure, the spec-only merge-detection filter, and cross-repo discovery/allowlist membership.
+1. HANDOFF-11.1 The system's implementation SHALL ship automated Python tests, run by this repo's quality (`pytest`) job, covering: `tasks.md` parsing, the coder-label default, the idempotency marker, at-most-once commenting, the missing-secret failure, the spec-only merge-detection filter, and cross-repo discovery/allowlist membership. Note: the cross-repo discovery/allowlist coverage (HANDOFF-2) is an intended expansion of done-check #9's test list under the central architecture, not scope creep: the central model relies on discovery/allowlist where the per-repo model did not, so that surface is tested here deliberately.
 2. HANDOFF-11.2 WHEN the handoff runs a second time for the same spec and commit THEN a test SHALL prove that zero additional issues are created.
 3. HANDOFF-11.3 WHEN a `codex` issue already has the `@codex` comment THEN a test SHALL prove that no second comment is posted.
 4. HANDOFF-11.4 Each test SHALL cite the requirement ID(s) it verifies in its name or a comment (for example `# HANDOFF-6.2`).
