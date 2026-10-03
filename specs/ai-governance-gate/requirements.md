@@ -1,0 +1,57 @@
+# Requirements: AI governance spec gate and agent roles
+
+Spec ID: GATE · Issue: #2 · Status: proposed; Ky approves by merging this spec-only PR
+
+Provenance: Grok Bot (executor agent) drafted these sentences from Ky's 2026-10-03 instructions, standing in for Kiro during the bootstrap, and committed them with Ky's token. Ky owns the sentences, and coders must not paraphrase them to fit the code.
+
+## Introduction
+
+Every agent has a fixed role. Kiro writes specs; coders implement specs that already exist on `main`; Ky approves and merges. The `policy` job of the shared `ai-governance / verdict` gate enforces this in every repo.
+
+The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md`, EARS acceptance criteria). The traceability follows the requirement-ID → test pattern Ky already uses:
+
+- LamportLogic: the `AUTH-REQ-001` matrix;
+- ZeroAPI: `EO-1` trace labels;
+- human-rebuild-bootcamp: `GOLDEN_SPEC.md` `[R-SPEC-F1]` IDs.
+
+## Requirements
+
+### Requirement 1: Spec gate for code changes (GATE-1)
+
+**User Story:** As Ky, I want every AI-authored code change to implement a spec that was written and merged first, so that agents build agreed behavior instead of inventing it.
+
+#### Acceptance Criteria
+
+1. GATE-1.1 WHEN a pull request changes a code path THEN the system SHALL fail the policy job unless the PR body links an issue (`Closes #N`, `Relates to #N`, or an issue URL).
+2. GATE-1.2 WHEN a pull request changes a code path AND its body does not reference, with a `Spec: <spec-path>/<slug>` line, a spec folder that already exists on the base branch THEN the system SHALL fail the policy job.
+3. GATE-1.3 WHEN the referenced spec folder on the base branch has no `requirements.md`, or its `requirements.md` contains no numbered EARS acceptance criterion (`<PREFIX>-<n>.<m> ... SHALL ...`) THEN the system SHALL fail the policy job.
+4. GATE-1.4 WHEN a pull request changes a code path AND no added or changed test file cites an acceptance-criterion ID or requirement ID from the referenced spec THEN the system SHALL fail the policy job.
+5. GATE-1.5 WHEN every changed path matches the explicit exemption rule THEN the system SHALL pass the spec gate without a spec. The rule covers docs, spec and contract files, repo metadata, GitHub workflow and template files, lockfiles, `requirements*.txt`, and `package.json` changes limited to dependency keys.
+6. GATE-1.6 WHEN deciding whether a pull request is exempt THEN the system SHALL ignore labels, branch names, and PR authors.
+7. GATE-1.7 WHEN a pull request changes a code path AND adds, changes, or deletes a file under a spec path THEN the system SHALL fail the policy job.
+8. GATE-1.8 WHEN a pull request changes only spec paths and other exempt paths THEN the system SHALL pass the spec gate, subject to the role gate (GATE-3).
+
+### Requirement 2: Gate re-runs on PR metadata edits (GATE-2)
+
+**User Story:** As Ky, I want the verdict to reflect the PR's current title and body, so that removing an issue or spec link after a green run cannot slip through.
+
+#### Acceptance Criteria
+
+1. GATE-2.1 WHEN a pull request's title or body is edited THEN the caller template SHALL re-run the gate (`pull_request` types include `edited`).
+2. GATE-2.2 WHEN a re-run is triggered on the same commit THEN the caller template SHALL NOT cancel the in-flight run.
+
+### Requirement 3: Fixed agent roles (GATE-3)
+
+**User Story:** As Ky, I want one role map that every repo's gate enforces, so that only Kiro (or I) author specs and coders only implement them.
+
+#### Acceptance Criteria
+
+1. GATE-3.1 WHEN a pull request adds, changes, or deletes a file under a spec path THEN the system SHALL fail the policy job unless the PR opener and the author and committer of every commit in the PR match an identity of the `spec-author` role in `roles.yml`.
+2. GATE-3.2 WHEN a commit's committer is GitHub's web-flow identity (`noreply@github.com`) THEN the system SHALL check only that commit's author.
+3. GATE-3.3 WHEN a pull request in KyPython/ai-governance changes `roles.yml` THEN the system SHALL fail the policy job unless the PR opener and every commit identity match the owner in `roles.yml`.
+4. GATE-3.4 IF `roles.yml` cannot be read or lacks an owner, spec paths, or spec-author identities THEN the system SHALL fail the policy job.
+5. GATE-3.5 The system SHALL read the role map and spec paths only from `roles.yml` on KyPython/ai-governance `main`, and SHALL NOT accept caller inputs that change roles or spec paths.
+
+#### Known limit
+
+Git author and committer fields are self-declared, and agents that push with Ky's token appear as KyPython (the owner override). GATE-3 therefore proves only the identities that commits and PRs declare. It cannot tell an agent using Ky's token from Ky himself.

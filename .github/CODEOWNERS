@@ -1,2 +1,5 @@
 # Every path requires Ky's review. Governance source of truth.
 * @KyPython
+
+# Agent role map: Ky only.
+/roles.yml @KyPython
