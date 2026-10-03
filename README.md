@@ -26,6 +26,7 @@ All jobs run on `pull_request` and on `push` to `main`.
 | --- | --- | --- |
 | `quality` | Detects pnpm / yarn / npm (via corepack) or Python. Runs install (frozen lockfile), then `lint`, `type-check`/`typecheck`, `test`, `build` if those scripts exist; Python uses ruff, mypy, and pytest when configured. Missing tests fail unless `require-tests: false`. Optional `extra-command` runs repo-specific gates, e.g. `pnpm validate:all`. | `ci.yml`, `.claude/hooks/verify-before-stop.mjs` |
 | `policy` | `AGENTS.md` contains the `AI-GOVERNANCE:v1` section. CODEOWNERS has a global `*` owner. Every workflow has a `permissions:` block and SHA-pinned `uses:`. On PRs: the title follows Conventional Commits, and the body references an issue. A missing reference is a warning by default and an error for code PRs or when `require-issue-reference: true`. The **spec gate** (below) runs on every PR. Structural changes need a valid `SYSTEMS_THINKING_CONTRACT` covering every structural path (`auto` = enforced when `.systems-thinking/contracts/` exists). If governance files change, a notice flags that code-owner review is needed. | `AGENTS.md`, `CLAUDE.md`, `CODEOWNERS`, `.husky/commit-msg`, PR template, `validate-security-baseline.js`, `.systems-thinking/` |
+| `security` | zizmor (workflow static analysis), shellcheck on changed scripts, osv-scanner dependency review of newly introduced vulnerabilities; all pinned by hash/checksum. | `security-lint.yml`, `ci.yml`, `dependency-review.yml` |
 | `secret-scan` | gitleaks 8.30.1 binary, pinned by checksum, over the **whole PR commit range** (not just the tip). Uses the repo's `.gitleaks.toml` if it has one. Fails closed. | `secret-scan.yml`, `.gitleaks.toml` |
 | `verdict` | A single aggregate check that fails closed. **Make this the one required status check.** It also publishes the scorecard (see below). | n/a |
 
@@ -75,6 +76,40 @@ Labels, branch names (including `dependabot/*`), and authors never exempt a PR, 
 - park-city-studios `REQUIREMENTS_TRACEABILITY.md`;
 - human-rebuild-bootcamp `GOLDEN_SPEC.md`: `[R-SPEC-F1]` requirement IDs plus acceptance oracles;
 - ky-cloud-control-plane's Kiro-first spec gate: Kiro drafts requirements, Ky approves the exact sentences.
+
+### Strict-repo parity (gap analysis)
+
+`KyLamportLogic/LamportLogic`, `human-rebuild-bootcamp` and `ky-cloud-control-plane` are the strictest repos and the source of truth. Every control they enforce is listed below with its ai-governance status.
+
+- **had**: the gate already did this.
+- **added**: the `security` job and policy sections 10–13 (requirements GATE-5).
+- **repo-specific**: not generic. It stays in that repo's own required CI, which the gate runs *alongside* and never replaces.
+
+| Control | Source | ai-governance |
+| --- | --- | --- |
+| Install, lint, type-check, test, build | LamportLogic `ci.yml` (verify); bootcamp `ci.yml` (`npm run ci:github`); control-plane `pnpm build`/`pnpm test` | had (`quality`) |
+| Gitleaks over the PR commit range | LamportLogic `secret-scan.yml` | had (`secret-scan`) |
+| Workflow SHA pinning and `permissions:` | LamportLogic `validate-security-baseline.js` | had (`policy`; `workflow-baseline: all` matches LamportLogic's full-repo scope) |
+| Workflow static analysis | LamportLogic `security-lint.yml` (zizmor) | **added**: zizmor 1.30.1, hash-pinned, `--min-severity medium` on in-scope workflows |
+| Shellcheck on changed scripts | LamportLogic `ci.yml` | **added**: `shellcheck --severity=error` |
+| Dependency review | LamportLogic RAG `dependency-review.yml`; `validate-dependency-floor.js` | **added**: osv-scanner 2.6.0 (checksum-pinned). Fails on vulnerabilities the PR *introduces* (head vs. base), so no paid GitHub Advanced Security is needed |
+| No hand-rolled auth, no direct DB client | LamportLogic `validate-constitution.sh` (pre-commit) | **added**: fails when added lines use `jwt.sign`/`jwt.verify`/`jsonwebtoken` or `new PrismaClient` outside `packages/auth|security|database/` |
+| No destructive commands | LamportLogic `.claude/hooks/pre-tool-use.mjs` | **added**: force-push, `reset --hard`, `git clean -fdx`, DB reset/drop, `terraform destroy` and `rm -rf /` fail when added to scripts, workflows, Dockerfiles, Makefiles, `.husky/` or `package.json` |
+| Deploy only after CI | LamportLogic `deploy-all.yml` (`workflow_run` + success); AGENTS rule | **added**: changed deploy/release/publish workflows fail if they deploy on PR events, use `workflow_run` without a success check, or deploy on push to any branch |
+| Container hardening | LamportLogic `validate-container-hardening.js` | **added** (subset): changed Dockerfiles need a versioned, non-`latest` base and a non-root final `USER`. The full rules (digest pin, HEALTHCHECK, ports, volumes) stay in LamportLogic |
+| CODEOWNERS | all three | had (global owner required) |
+| PR template | LamportLogic, bootcamp `PULL_REQUEST_TEMPLATE.md` | **added** (warning) |
+| Dependabot | LamportLogic `dependabot.yml` | **added** (warning) |
+| Conventional Commits | LamportLogic `.husky/commit-msg` | had (PR title) |
+| Systems-thinking contract | LamportLogic, bootcamp `.systems-thinking/` | had |
+| Requirements before code; Kiro authors specs | control-plane `KIRO_SPEC_AND_MONETIZATION_GATE.md`; LamportLogic AGENTS | had (spec gate + role gate) |
+| AI monetization / mutation gate | LamportLogic `validate-ai-monetization-gate.js`, `ai:mutation:check` | repo-specific (the generic analog is the spec + role gates) |
+| `validate:all` suite (env vars, RLS, auth coverage, provider SDK, workspace sync, path integrity) | LamportLogic | repo-specific |
+| Snyk code, open-source and IaC scans | LamportLogic `snyk-security.yml` | repo-specific (needs a Snyk account token). osv-scanner and zizmor cover the free part |
+| PCS Godot tests, model-verification plane, mutation testing | LamportLogic | repo-specific |
+| OPA policy tests, TLA+ model check, `cdk synth --strict` with cdk-nag | control-plane | repo-specific. The gate's `quality` job runs its `pnpm build` and `pnpm test`, which include the OPA and TLA+ suites |
+| Bootcamp grading parity (`ci:github`) | bootcamp | repo-specific |
+| Scheduled full-history gitleaks | LamportLogic `secret-scan.yml` (schedule) | not added; the strict repos keep their own |
 
 ### Workflow: one coder per task, cross-reviewed
 
