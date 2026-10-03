@@ -34,6 +34,6 @@ roles:
       - claude[bot]
       - grok-bot
   approver:
-    description: Reviews and merges. Enforced by branch protection (agents cannot merge) rather than by this file.
+    description: Ky reviews and merges by hand. Agents never merge (AGENTS.md rule). Not enforced by required approvals, because every agent PR appears as KyPython.
     identities:
       - KyPython
