@@ -152,6 +152,11 @@ class SpecGate(Base):
         code, out = r.policy(body="no issue", author=CURSOR, opener="cursor[bot]")
         self.assertEqual(code, 0, out); self.assertIn("exempt by path rule", out)
 
+    def test_GATE_1_5_file_purpose_inventory_is_repo_metadata(self):
+        r = self.repo(); r.write({"config/purpose-inventory.json": '{"paths": {"AGENTS.md": {"purpose": "rules"}}}\n', "AGENTS.md": "<!-- AI-GOVERNANCE:v1 -->\nx\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 0, out); self.assertIn("exempt by path rule", out)
+
     def test_GATE_1_5_dependency_only_package_json_is_exempt(self):
         r = self.repo(); r.write({"package.json": json.dumps({"name": "x", "scripts": {"test": "node --test"}, "dependencies": {"a": "1.1.0"}}, indent=2),
                                   "pnpm-lock.yaml": "lockfileVersion: '9.0'\n"})

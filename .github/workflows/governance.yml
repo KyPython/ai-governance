@@ -486,7 +486,7 @@ jobs:
           if is_pr:
               DOC_RE = re.compile(r"\.(md|mdx|rst|txt|adoc|png|jpe?g|gif|svg|webp|ico|pdf)$|(^|/)(docs?/|LICENSE|NOTICE|CHANGELOG)|(^|/)\.cursorrules$|^\.cursor/rules/", re.I)
               META_RE = re.compile(r"^(" + "|".join(re.escape(d) + "/" for d in spec_dirs) + r"|\.systems-thinking/|\.ai-governance/contracts/)")
-              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
+              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS|purpose-inventory\.json)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
               LOCK_RE = re.compile(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|go\.sum)$")
               DEP_KEYS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "packageManager", "overrides", "resolutions", "pnpm"}
               base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()

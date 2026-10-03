@@ -63,7 +63,7 @@ Every PR that **touches spec paths** (`spec_paths` in roles.yml) fails unless th
 
 - docs (`*.md`, `docs/`, images, `.cursorrules`, `.cursor/rules/`);
 - spec and contract files (spec paths are still subject to the role gate);
-- repo metadata (`.gitignore`, `.gitattributes`, `.editorconfig`, prettier config, `.npmrc`, `.nvmrc`/`.node-version`/`.python-version`, `CODEOWNERS`, `LICENSE`, `.github/workflows/*.yml`, issue/PR templates, `dependabot.yml`). Other config such as `tsconfig.json` or `eslint.config.*` changes behavior, so it counts as code;
+- repo metadata (`.gitignore`, `.gitattributes`, `.editorconfig`, prettier config, `.npmrc`, `.nvmrc`/`.node-version`/`.python-version`, `CODEOWNERS`, `LICENSE`, file-purpose inventories (`purpose-inventory.json`), `.github/workflows/*.yml`, issue/PR templates, `dependabot.yml`). Other config such as `tsconfig.json` or `eslint.config.*` changes behavior, so it counts as code;
 - lockfiles and `requirements*.txt`;
 - `package.json` where only dependency keys changed (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `packageManager`, `overrides`, `resolutions`, `pnpm`).
 
