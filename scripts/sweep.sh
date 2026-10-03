@@ -3,6 +3,7 @@
 #
 #   sweep.sh            report only (default, no writes)
 #   sweep.sh --apply    open opt-in PRs and apply the protection model
+#                       (requires a skip list: $SWEEP_SKIP or sweep.sh's dir/sweep.skip)
 #
 # For each non-archived, non-fork, non-empty repo of the user and of every org where the
 # user is an admin (minus sweep.skip):
@@ -22,7 +23,12 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${GITHUB_TOKEN:?Set GITHUB_TOKEN}"
 APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
-export APPLY DIR
+SKIP_FILE="${SWEEP_SKIP:-$DIR/sweep.skip}"
+if [ "$APPLY" = 1 ] && [ ! -f "$SKIP_FILE" ]; then
+  echo "Refusing --apply without a skip list ($SKIP_FILE). Create it (it may be empty) after reviewing repos whose own rules forbid AI edits." >&2
+  exit 2
+fi
+export APPLY DIR SKIP_FILE
 python3 - <<'PY'
 import json, os, subprocess, sys, urllib.request, urllib.error, urllib.parse
 T=os.environ["GITHUB_TOKEN"]; APPLY=os.environ["APPLY"]=="1"; DIR=os.environ["DIR"]
@@ -47,7 +53,7 @@ def pages(path):
         out+=d; p+=1
         if len(d)<100: return out
 skip={}
-sf=os.path.join(DIR,"sweep.skip")
+sf=os.environ["SKIP_FILE"]
 if os.path.exists(sf):
     for line in open(sf):
         if line.strip() and not line.startswith("#"):
