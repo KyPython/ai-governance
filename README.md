@@ -11,7 +11,8 @@ Ky's AI governance, tests, and CI rules live here and apply to every repo AI age
 | `.github/workflows/governance.yml` | Reusable workflow (`on: workflow_call`) that runs the gate in any repo |
 | `AGENTS.governance.md` | Canonical `AI-GOVERNANCE:v1` section every repo's `AGENTS.md` must contain |
 | `templates/ai-governance.yml` | Caller workflow that goes in each repo |
-| `scripts/optin.sh` | One command to opt a repo in, plus `--protect` to require the check |
+| `scripts/optin.sh` | One command to opt a repo in, plus `--protect` to apply the protection model |
+| `scripts/sweep.sh` | Finds every owned/admin repo without the gate; report-only by default, `--apply` opens opt-in PRs and protects repos whose verdict has passed. Optional `scripts/sweep.skip` (`owner/repo reason` per line, kept out of git) lists exclusions |
 | `.github/workflows/self-test.yml` | This repo dogfoods its own gate |
 
 ## What the gate checks
