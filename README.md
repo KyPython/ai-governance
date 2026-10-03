@@ -14,6 +14,7 @@ Ky's AI governance, tests, and CI rules live here and apply to every repo AI age
 | `scripts/optin.sh` | One command to opt a repo in, plus `--protect` to apply the protection model |
 | `scripts/sweep.sh` | Finds every owned/admin repo without the gate; report-only by default, `--apply` opens opt-in PRs and protects repos whose verdict has passed. Optional `scripts/sweep.skip` (`owner/repo reason` per line, kept out of git) lists exclusions |
 | `.github/workflows/self-test.yml` | This repo dogfoods its own gate and runs `tests/` (behavioral tests of the policy script) |
+| `roles.yml` | The agent role map (spec-author / coder / approver) and spec paths; read by every gate run from `main` |
 | `templates/spec/` | Spec templates: `requirements.md`, `design.md`, `tasks.md` |
 | `specs/ai-governance-gate/` | The gate's own spec (the requirements the tests in `tests/` trace to) |
 
@@ -30,23 +31,42 @@ All jobs run on `pull_request` and on `push` to `main`.
 
 The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes in repos that set "allowed actions: selected" and "require SHA pinning".
 
-### Spec gate (no spec, no code)
+### Roles and the spec gate (no spec, no code)
 
-Every PR that changes a **code path** fails `policy` (and therefore `verdict`) unless it does all three of these:
+`roles.yml` is the single role map. Ky owns it (CODEOWNERS) and only Ky merges it. The `policy` job reads it from `KyPython/ai-governance@main` on every run, in every repo, and fails closed if it can't. Callers have no input to change roles or spec paths.
 
-1. **Links an issue** in the body: `Closes #N`, `Relates to #N`, or an issue URL.
-2. **Has a spec.** It adds or changes a file in `specs/<slug>/` or `.kiro/specs/<slug>/`, or references an existing spec with a `Spec: specs/<slug>` line in the body. That folder's `requirements.md` must contain at least one numbered EARS acceptance criterion: a stable ID `<PREFIX>-<n>.<m>` on a line containing `SHALL`, e.g. `1. GOV-1.1 WHEN … THEN the system SHALL …`.
-3. **Traces tests to the spec.** It adds or changes a test file (`*.test.*`, `*.spec.*`, `test_*.py`, `*_test.*`, `tests/`, `__tests__/`) whose path or content cites one of those criterion IDs (`GOV-1.1`) or requirement IDs (`GOV-1`).
+| Role | Who | May |
+| --- | --- | --- |
+| `spec-author` | Kiro (`kiro-agent[bot]`); KyPython as owner override | write specs and requirements in spec-only PRs |
+| `coder` | Codex (`chatgpt-codex-connector[bot]`, `codex`), Cursor (`cursor[bot]`), Copilot, Claude, Grok Bot, … | implement specs that already exist on `main` |
+| `approver` | KyPython | review and merge (enforced by branch protection: agents can't merge) |
 
-**Exempt by path only.** A PR is exempt when *every* changed path is one of these:
+Every PR that changes a **code path** fails `policy` (and therefore `verdict`) unless all of these hold:
+
+1. **It links an issue** in the body: `Closes #N`, `Relates to #N`, or an issue URL.
+2. **It references an existing spec.** The body has a `Spec: specs/<slug>` (or `.kiro/specs/<slug>`) line, and that spec **already exists on the base branch**. Its `requirements.md` contains at least one numbered EARS acceptance criterion: a stable ID `<PREFIX>-<n>.<m>` on a line containing `SHALL`, e.g. `1. GOV-1.1 WHEN … THEN the system SHALL …`.
+3. **It does not touch spec paths.** Specs come first, in their own spec-only PR.
+4. **It traces tests to the spec.** It adds or changes a test file (`*.test.*`, `*.spec.*`, `test_*.py`, `*_test.*`, `tests/`, `__tests__/`) whose path or content cites one of those criterion IDs (`GOV-1.1`, or `GOV_1_1` in identifiers) or requirement IDs (`GOV-1`).
+
+Every PR that **touches spec paths** (`spec_paths` in roles.yml) fails unless the PR opener **and the author and committer of every commit** match a `spec-author` identity. The committer check is skipped for GitHub's own web-flow committer (`noreply@github.com`). In `KyPython/ai-governance`, a change to `roles.yml` additionally needs every identity to be the owner.
+
+**What the role gate can and cannot prove.**
+- The PR opener's login comes from GitHub, so it is reliable.
+- Commit author and committer names and emails are self-declared git metadata. Anyone can write any name.
+- Many agents push with Ky's token, so their commits and PRs appear as **KyPython**. The owner override then accepts them.
+- So the gate reliably blocks spec changes that show a coder or unknown identity anywhere: a `cursor[bot]` commit, a Codex-opened PR, or a `box@…` committer. It **cannot** tell an agent using Ky's token from Ky himself.
+- Closing that gap needs each agent to have its own GitHub identity (app or bot account), with no shared token. Signed-commit verification would be a further step.
+- Ky's merge remains the real approval for any spec.
+
+**Exempt by path only.** A PR is exempt from the code rules when *every* changed path is one of these:
 
 - docs (`*.md`, `docs/`, images, `.cursorrules`, `.cursor/rules/`);
-- spec and contract files;
+- spec and contract files (spec paths are still subject to the role gate);
 - repo metadata (`.gitignore`, `.gitattributes`, `.editorconfig`, prettier config, `.npmrc`, `.nvmrc`/`.node-version`/`.python-version`, `CODEOWNERS`, `LICENSE`, `.github/workflows/*.yml`, issue/PR templates, `dependabot.yml`). Other config such as `tsconfig.json` or `eslint.config.*` changes behavior, so it counts as code;
 - lockfiles and `requirements*.txt`;
 - `package.json` where only dependency keys changed (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `packageManager`, `overrides`, `resolutions`, `pnpm`).
 
-Labels, branch names (including `dependabot/*`), and authors never exempt a PR, so a dependabot lockfile/manifest bump passes by path while a dependabot PR touching code does not. The rule lives in `governance.yml` (policy section 8) and is covered by `tests/test_policy.py`.
+Labels, branch names (including `dependabot/*`), and authors never exempt a PR, so a dependabot lockfile/manifest bump passes by path while a dependabot PR touching code does not. The rules live in `governance.yml` (policy sections 0, 8, 9) and are covered by `tests/test_policy.py`.
 
 **Format and where it came from.** Specs follow Kiro's layout: `requirements.md` (Spec ID, issue, user stories, numbered EARS criteria), optional `design.md` and `tasks.md`; see `templates/spec/`. The ID-to-test traceability copies what Ky already does:
 
@@ -58,7 +78,7 @@ Labels, branch names (including `dependabot/*`), and authors never exempt a PR, 
 
 ### Inputs
 
-`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `spec-dirs` ("specs,.kiro/specs"), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
+`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
 
 ## Opt a repo in
 

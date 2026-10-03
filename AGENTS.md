@@ -14,15 +14,23 @@ Agents never merge, approve, or deploy their own work.
 
 ### Rules
 1. **Branch + PR only.** Never push to `main`. Work on a branch such as `feat/*`, `fix/*`, `chore/*`, `docs/*`, `ci/*`, `refactor/*`, or `governance/*`, then open a PR. Do not merge it, approve it, enable auto-merge, or trigger a deploy. Ky merges.
-2. **Spec first: no spec, no code.** Before writing or changing code, read the spec for the change. If none exists, write the requirements first and stop until they exist. Kiro (or Ky) writes specs; coding agents (Codex, Cursor, Claude Code, Grok Bot, Copilot) implement them.
-   - **Format.** A spec lives in `specs/<slug>/` or `.kiro/specs/<slug>/`. It holds `requirements.md` (required) plus optional `design.md` and `tasks.md`; templates are in `KyPython/ai-governance/templates/spec/`.
-   - **Criteria.** `requirements.md` gives a Spec ID and the issue, then user stories, then numbered EARS acceptance criteria with stable IDs, e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`.
-   - **Requirement sentences are the requirement.** Coders do not paraphrase, reword, or weaken them to fit the code. If a requirement is wrong, stop and ask Ky, or route the change back through the spec author.
-   - **What the gate enforces.** Every PR that changes code fails `ai-governance / verdict` unless it does all three of these:
-     1. links an issue (`Closes #<n>` / `Relates to #<n>`);
-     2. adds or changes a spec folder, or references one with a `Spec: specs/<slug>` line in the PR body;
-     3. adds or changes tests whose names or comments cite the criterion IDs they verify, e.g. `it("GOV-1.1 ...")` or `# GOV-1.1`.
-   - **Exemptions** apply only by an explicit path rule in the gate: docs, spec and contract files, non-executable config and workflow/template files, lockfiles, and dependency-only manifest changes. Labels, branch names, and authors never exempt a PR.
+2. **Fixed roles. Spec first: no spec, no code.** Every agent has one role, defined in `KyPython/ai-governance/roles.yml`. Ky owns that file, and the gate reads it in every repo.
+   - **Spec author: Kiro (`kiro-agent[bot]`) only**, with Ky as owner override. Kiro writes specs and requirements in **spec-only PRs**, and Ky reviews and merges them.
+   - **Coders** (Codex `chatgpt-codex-connector[bot]`, Cursor `cursor[bot]`, Copilot, Claude Code, Grok Bot, and any other coding agent) **implement existing specs only**.
+     - Coders never create, edit, or delete files under `specs/` or `.kiro/specs/`.
+     - Before writing code, read the spec on `main`. If none exists, stop and ask Ky to have Kiro write it.
+     - Requirement sentences are the requirement. Do not paraphrase, reword, or weaken them to fit the code. If one is wrong, stop and route it back to Kiro or Ky.
+   - **Approver: Ky (@KyPython)** reviews and merges. Agents never merge.
+   - **Format.** A spec lives in `specs/<slug>/` or `.kiro/specs/<slug>/`, in Kiro's layout: `requirements.md` (required) plus optional `design.md` and `tasks.md`; templates are in `KyPython/ai-governance/templates/spec/`.
+     - `requirements.md` gives a Spec ID and the issue, then user stories, then numbered EARS acceptance criteria with stable IDs, e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`.
+   - **What the gate enforces** (`ai-governance / verdict`, no label or branch bypass):
+     1. A PR that changes code must link an issue (`Closes #<n>` / `Relates to #<n>`).
+     2. It must reference, with a `Spec: specs/<slug>` line in the body, a spec that **already exists on the base branch** with numbered EARS criteria.
+     3. It must add or change tests whose names or comments cite the criterion IDs they verify, e.g. `it("GOV-1.1 ...")`, `# GOV-1.1`, or `test_GOV_1_1`.
+     4. It must not touch spec paths.
+     5. A PR that touches spec paths fails unless the PR opener and every commit's author and committer are in the spec-author role.
+   - **Exemptions** apply only by the gate's explicit path rule: docs, spec and contract files, repo metadata and workflow/template config, lockfiles, and dependency-only manifest changes. Labels, branch names, and authors never exempt a PR.
+   - **Limit:** git author/committer fields are self-declared, and an agent pushing with Ky's token appears as KyPython. Do not use Ky's identity to pass the role gate. That is impersonation, and it violates rule 11.
 3. **Prove it green before you stop.** Run the repo's install, lint, type-check, test, and build commands locally (whichever exist). If any of them fails, fix it or report the blocker. Never say "tests pass" without running them.
 4. **Tests ship with behavior changes.** Tests check observable behavior or stable contracts, not snippets of source code. Never delete, skip, or loosen a test just to get green.
 5. **PR hygiene.**

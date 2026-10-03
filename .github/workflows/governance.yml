@@ -58,10 +58,6 @@ on:
         description: Optional repo-specific governance command run after tests (e.g. "pnpm validate:all").
         type: string
         default: ""
-      spec-dirs:
-        description: Comma-separated spec roots for the spec gate (each holds <slug>/requirements.md).
-        type: string
-        default: "specs,.kiro/specs"
       require-issue-reference:
         description: >
           Fail (instead of warn) when a PR that changes no code lacks an issue reference.
@@ -231,7 +227,10 @@ jobs:
           ENFORCE_TITLE: ${{ inputs.enforce-conventional-title }}
           STC_MODE: ${{ inputs.systems-thinking-contract }}
           BASELINE_MODE: ${{ inputs.workflow-baseline }}
-          SPEC_DIRS: ${{ inputs.spec-dirs }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+          # Single role map owned by Ky; read from main so role changes apply everywhere at once.
+          ROLES_URL: https://raw.githubusercontent.com/KyPython/ai-governance/main/roles.yml
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -247,6 +246,53 @@ jobs:
           event = os.environ.get("EVENT_NAME", "")
           is_pr = event.startswith("pull_request")
           MARKER = "AI-GOVERNANCE:v1"
+
+          # 0. Role map (KyPython/ai-governance/roles.yml). Fails closed if it cannot be read.
+          def parse_roles(text):
+              # Minimal YAML subset (nested maps, lists of scalars, comments) - no third-party deps.
+              root = {}; stack = [(-1, root)]; pending = None
+              for raw in text.splitlines():
+                  line = re.sub(r"\s+#.*$", "", raw).rstrip()
+                  if not line.strip() or line.lstrip().startswith("#"):
+                      continue
+                  ind = len(line) - len(line.lstrip()); body_ = line.strip()
+                  while stack and ind <= stack[-1][0] and not (body_.startswith("- ") and isinstance(stack[-1][1], list) and ind == stack[-1][0]):
+                      stack.pop()
+                  parent = stack[-1][1]
+                  if body_.startswith("- "):
+                      if pending is not None:
+                          lst = []; pending[0][pending[1]] = lst; stack.append((ind, lst)); parent = lst; pending = None
+                      parent.append(body_[2:].strip().strip("'\""))
+                      continue
+                  key, _, val = body_.partition(":")
+                  key, val = key.strip(), val.strip().strip("'\"")
+                  if val:
+                      parent[key] = val; pending = None
+                  else:
+                      child = {}; parent[key] = child; stack.append((ind, child)); pending = (parent, key)
+              return root
+
+          roles, roles_src = None, ""
+          try:
+              if os.environ.get("ROLES_FILE"):
+                  roles_src = os.environ["ROLES_FILE"]; roles_text = Path(roles_src).read_text()
+              else:
+                  import urllib.request
+                  roles_src = os.environ.get("ROLES_URL", "")
+                  with urllib.request.urlopen(roles_src, timeout=20) as r:
+                      roles_text = r.read().decode("utf-8")
+              roles = parse_roles(roles_text)
+              def ids_of(role):
+                  return {i.lower() for i in (roles.get("roles", {}).get(role, {}).get("identities") or [])}
+              SPEC_AUTHORS, CODERS, OWNER = ids_of("spec-author"), ids_of("coder"), (roles.get("owner") or "").lower()
+              spec_dirs = [d.strip().strip("/") for d in roles.get("spec_paths") or [] if d.strip()]
+              if not SPEC_AUTHORS or not OWNER or not spec_dirs:
+                  raise ValueError("roles.yml needs owner, spec_paths and roles.spec-author.identities")
+              ok(f"role map loaded from {roles_src}: spec authors = {', '.join(sorted(SPEC_AUTHORS))}")
+          except Exception as e:
+              roles = None; SPEC_AUTHORS, CODERS, OWNER = set(), set(), ""
+              spec_dirs = ["specs", ".kiro/specs"]
+              err(f"Role map could not be loaded from {roles_src or 'roles.yml'} ({e}). The gate fails closed without it.")
 
           # 1. AGENTS.md present and points at the canonical governance rules.
           agents = Path("AGENTS.md")
@@ -370,8 +416,9 @@ jobs:
           #    ("GOV-1.1 WHEN ... THEN the system SHALL ..."), traced from tests by ID
           #    (LamportLogic AUTH-REQ-001 matrix / EO-1 trace; bootcamp [R-SPEC-F1] IDs).
           #    Exemption is by explicit path rule only - never by label, branch name or author.
+          #    Specs are written by Kiro (or Ky) in spec-only PRs and must exist on the base branch
+          #    before a code PR references them; a PR may not change code and specs together.
           if is_pr:
-              spec_dirs = [d.strip().strip("/") for d in (os.environ.get("SPEC_DIRS") or "specs,.kiro/specs").split(",") if d.strip()]
               DOC_RE = re.compile(r"\.(md|mdx|rst|txt|adoc|png|jpe?g|gif|svg|webp|ico|pdf)$|(^|/)(docs?/|LICENSE|NOTICE|CHANGELOG)|(^|/)\.cursorrules$|^\.cursor/rules/", re.I)
               META_RE = re.compile(r"^(" + "|".join(re.escape(d) + "/" for d in spec_dirs) + r"|\.systems-thinking/|\.ai-governance/contracts/)")
               CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
@@ -395,42 +442,56 @@ jobs:
 
               def exempt(f):
                   return bool(DOC_RE.search(f) or META_RE.search(f) or CONFIG_RE.search(f) or LOCK_RE.search(f)
-                              or re.search(r"(^|/)requirements[\w.-]*\.txt$", f) or dependency_only_manifest(f))
+                              or re.search(r"(^|/)requirements[\w.-]*\.txt$", f) or dependency_only_manifest(f)
+                              or (os.environ.get("REPO") == "KyPython/ai-governance" and f == "roles.yml"))
 
               code = [f for f in changed if not exempt(f)]
+              spec_changes = [f for f in changed if any(f.startswith(d + "/") for d in spec_dirs)]
               if not code:
-                  ok("spec gate: no code paths changed (exempt by path rule)")
+                  if spec_changes:
+                      ok("spec gate: spec-only PR (" + ", ".join(spec_changes) + "); Ky reviews and merges specs before code is built from them")
+                  else:
+                      ok("spec gate: no code paths changed (exempt by path rule)")
               else:
                   print("Code paths requiring a spec: " + ", ".join(code))
                   if not has_issue:
                       err("Spec gate: this PR changes code, so it must link an issue (`Closes #<n>` / `Relates to #<n>`).")
-                  # Spec folders: changed in the PR, or referenced in the body as `Spec: specs/<slug>`.
+                  # Specs are authored by Kiro (or Ky) and merged first; coders implement them.
+                  if spec_changes:
+                      err("Spec gate: this PR changes code AND spec files (" + ", ".join(spec_changes) + "). Coding agents do not write their own specs: "
+                          "move the spec into its own spec-only PR (authored by Kiro or Ky), get it merged, then reference it here with `Spec: <dir>/<slug>`.")
+                  # The spec must be referenced in the body and already exist on the base branch.
+                  base_ref = os.environ.get("PR_BASE_SHA", "")
+                  def base_text(path):
+                      for rev in (base_ref, base):
+                          if rev:
+                              r = subprocess.run(["git", "show", f"{rev}:{path}"], capture_output=True, text=True)
+                              if r.returncode == 0:
+                                  return r.stdout
+                      return None
                   folders = set()
-                  for f in changed:
-                      for d in spec_dirs:
-                          if f.startswith(d + "/") and f.count("/") > d.count("/") + 1:
-                              folders.add(d + "/" + f[len(d) + 1:].split("/")[0])
-                  for m in re.finditer(r"(?im)\bspecs?\s*:\s*`?([\w./-]+)`?", body):
-                      folders.add(m.group(1).strip("/"))
+                  for m in re.finditer(r"(?im)^\W*specs?\W*:[\s*`]*([\w./-]+)", body):
+                      folders.add(re.sub(r"/(requirements|design|tasks)\.md$", "", m.group(1)).strip("/"))
                   crit_re = re.compile(r"^\s*(?:[-*]|\d+[.)])?\s*\**`?\[?([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+\.\d+)\]?`?\**[:.)]?\s.*\bSHALL\b", re.M)
                   ids, valid = set(), []
                   for folder in sorted(folders):
-                      req = Path(folder) / "requirements.md"
-                      if not any(folder == d or folder.startswith(d + "/") for d in spec_dirs):
-                          warn(f"Spec reference `{folder}` is outside the configured spec dirs ({', '.join(spec_dirs)}); ignored.")
+                      req = f"{folder}/requirements.md"
+                      if not any(folder.startswith(d + "/") and folder.count("/") == d.count("/") + 1 for d in spec_dirs):
+                          err(f"Spec gate: `Spec: {folder}` must name a folder `<dir>/<slug>` inside the spec dirs ({', '.join(spec_dirs)}).")
                           continue
-                      if not req.is_file():
-                          err(f"Spec gate: `{req}` does not exist. Each spec folder needs requirements.md (see KyPython/ai-governance/templates/spec/).")
+                      text = base_text(req)
+                      if text is None:
+                          err(f"Spec gate: `{req}` does not exist on the base branch. Specs must be merged to the base branch (spec-only PR, authored by Kiro or Ky) before code is built from them.")
                           continue
-                      found = set(crit_re.findall(req.read_text(encoding="utf-8", errors="replace")))
+                      found = set(crit_re.findall(text))
                       if not found:
                           err(f"Spec gate: `{req}` has no numbered EARS acceptance criteria (e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`).")
                           continue
-                      ids |= found; valid.append(str(req))
+                      ids |= found; valid.append(req)
                   if not folders:
-                      err("Spec gate: code changed but no spec was added or referenced. Add `specs/<slug>/requirements.md` (or `.kiro/specs/<slug>/`) or put `Spec: specs/<slug>` in the PR body.")
+                      err("Spec gate: code changed but the PR body references no spec. Add a line `Spec: specs/<slug>` (or `.kiro/specs/<slug>`) naming a spec that already exists on the base branch.")
                   elif valid:
-                      ok(f"spec gate: {len(ids)} acceptance criteria in {', '.join(valid)}")
+                      ok(f"spec gate: {len(ids)} acceptance criteria in {', '.join(valid)} (on base branch)")
                   # Traceability: a changed test must cite a criterion ID (or its requirement ID).
                   TEST_RE = re.compile(r"(^|/)(tests?|__tests__)/|\.(test|spec)\.[cm]?[jt]sx?$|(^|/)test_[^/]*\.py$|_test\.(py|go|rb)$|Tests?\.(gd|cs|java|kt|swift)$|\.bats$")
                   tests = [f for f in changed if TEST_RE.search(f) and not META_RE.search(f) and Path(f).is_file()]
@@ -450,6 +511,45 @@ jobs:
                           err("Traceability: changed tests (" + ", ".join(tests) + ") do not cite any requirement ID from the spec. Name or comment each test with the ID it verifies (e.g. `GOV-1.1`).")
                       else:
                           err("Traceability: code changed but no test was added or changed. Add or update a test that cites the acceptance criterion IDs it verifies.")
+
+          # 9. ROLES. Only the spec-author role (roles.yml) may change spec paths. Checks the PR opener and the
+          #    author and committer of every commit in the PR. Git identities are self-declared and agents that
+          #    push with Ky's token appear as KyPython, so this proves declared identities only.
+          if is_pr and roles is not None:
+              head = os.environ.get("PR_HEAD_SHA", "")
+              log = git("log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", f"{base}..{head}") if base and head else ""
+              def ident(name, email):
+                  m = re.match(r"^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$", email or "", re.I)
+                  return {x.lower() for x in (name, email, m.group(1) if m else None) if x}
+              people = []  # (label, identity set)
+              if os.environ.get("PR_AUTHOR"):
+                  people.append((f"PR opener @{os.environ['PR_AUTHOR']}", {os.environ["PR_AUTHOR"].lower()}))
+              for line in log.splitlines():
+                  sha, an, ae, cn, ce = (line.split("\x1f") + [""] * 5)[:5]
+                  people.append((f"{sha[:7]} author {an} <{ae}>", ident(an, ae)))
+                  if ce.lower() != "noreply@github.com":  # GitHub web-flow committer = platform, not a person
+                      people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
+              def role_of(ids):
+                  if ids & SPEC_AUTHORS: return "spec-author"
+                  if ids & CODERS: return "coder"
+                  return "unknown"
+              if spec_changes:
+                  bad = [label + f" (role: {role_of(ids)})" for label, ids in people if not ids & SPEC_AUTHORS]
+                  if bad:
+                      err("Role gate: only the spec-author role (" + ", ".join(sorted(SPEC_AUTHORS)) + ") may change spec paths. "
+                          "Not spec authors: " + "; ".join(bad) + ". Coders implement existing specs; Kiro writes them.")
+                  else:
+                      ok("role gate: every PR opener/commit identity that touched specs is a spec author (git identities are self-declared; "
+                         "commits pushed with KyPython's token count as KyPython)")
+              if os.environ.get("REPO") == "KyPython/ai-governance" and "roles.yml" in changed:
+                  bad = [label for label, ids in people if OWNER not in ids]
+                  if bad:
+                      err(f"Role gate: roles.yml may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
+                  else:
+                      ok("role gate: roles.yml changed by the owner identity only")
+              coders = sorted({label for label, ids in people if role_of(ids) == "coder"})
+              if coders:
+                  print("Coder identities in this PR: " + "; ".join(coders))
 
           # 7. Governance files touched -> human code-owner review is mandatory.
           gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
