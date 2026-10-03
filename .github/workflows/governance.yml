@@ -1,0 +1,419 @@
+name: AI Governance (reusable)
+
+# Reusable governance gate derived from KyLamportLogic/LamportLogic.
+# Every repo that AI agents (Kiro, Codex, Cursor, Grok Bot, Claude, Copilot)
+# work in calls this workflow from .github/workflows/ai-governance.yml and
+# marks the `ai-governance / verdict` check as required on `main`.
+#
+# Source of each rule (LamportLogic path in parentheses):
+#   quality      - install + lint + type-check + test + build
+#                  (.github/workflows/ci.yml, .claude/hooks/verify-before-stop.mjs)
+#   policy       - AGENTS.md present with governance marker (AGENTS.md, CLAUDE.md)
+#                - CODEOWNERS present with a global owner (.github/CODEOWNERS)
+#                - Conventional Commits PR title (.husky/commit-msg, PR template)
+#                - issue reference in PR body (PR template "Closes #")
+#                - SYSTEMS_THINKING_CONTRACT for structural changes
+#                  (PR template, .systems-thinking/contracts/)
+#                - workflow security baseline: explicit permissions + SHA-pinned
+#                  actions (scripts/validate-security-baseline.js, surface W)
+#   secret-scan  - gitleaks over the full PR commit range, pinned + checksummed
+#                  (.github/workflows/secret-scan.yml)
+#   verdict      - single fail-closed aggregate to mark as the required check
+#
+# Untrusted event fields are passed through env, never spliced into scripts.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version used when a package.json is present.
+        type: string
+        default: "22"
+      python-version:
+        description: Python version used when pyproject.toml / requirements.txt is present.
+        type: string
+        default: "3.12"
+      working-directory:
+        description: Directory containing the project manifest.
+        type: string
+        default: "."
+      require-tests:
+        description: Fail when a project is detected but has no test command.
+        type: boolean
+        default: true
+      extra-command:
+        description: Optional repo-specific governance command run after tests (e.g. "pnpm validate:all").
+        type: string
+        default: ""
+      require-issue-reference:
+        description: Fail (instead of warn) when the PR body does not reference an issue.
+        type: boolean
+        default: false
+      enforce-conventional-title:
+        description: Fail when the PR title is not a Conventional Commit.
+        type: boolean
+        default: true
+      systems-thinking-contract:
+        description: "auto = required when .systems-thinking/contracts/ exists; required; off"
+        type: string
+        default: "auto"
+    outputs:
+      verdict:
+        description: "pass or fail"
+        value: ${{ jobs.verdict.outputs.verdict }}
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Detect project type
+        id: detect
+        run: |
+          set -euo pipefail
+          pm=none
+          if [ -f package.json ]; then
+            if [ -f pnpm-lock.yaml ]; then pm=pnpm
+            elif [ -f yarn.lock ]; then pm=yarn
+            else pm=npm; fi
+          elif [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ]; then
+            pm=python
+          fi
+          echo "pm=${pm}" >> "$GITHUB_OUTPUT"
+          echo "Detected package manager: ${pm}"
+          echo "### quality: package manager \`${pm}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Node.js
+        if: steps.detect.outputs.pm == 'pnpm' || steps.detect.outputs.pm == 'npm' || steps.detect.outputs.pm == 'yarn'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Setup Python
+        if: steps.detect.outputs.pm == 'python'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install, lint, type-check, test, build
+        env:
+          PM: ${{ steps.detect.outputs.pm }}
+          REQUIRE_TESTS: ${{ inputs.require-tests }}
+        run: |
+          set -euo pipefail
+          summary() { echo "- $1" >> "$GITHUB_STEP_SUMMARY"; }
+
+          if [ "$PM" = "none" ]; then
+            echo "::notice::No package.json / pyproject.toml / requirements.txt found; nothing to build or test."
+            summary "no project manifest detected - skipped"
+            exit 0
+          fi
+
+          if [ "$PM" = "python" ]; then
+            python -m pip install --upgrade pip
+            if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+            if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+            if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || pip install -e . || true; fi
+            pip install ruff mypy pytest
+            uses_tool() { grep -qs "$1" pyproject.toml setup.cfg requirements*.txt "$2" 2>/dev/null; }
+            if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
+            if uses_tool mypy mypy.ini; then mypy . && summary "type-check: mypy passed"; else summary "type-check: mypy not configured - skipped"; fi
+            if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then
+              pytest && summary "test: pytest passed"
+            elif [ "$REQUIRE_TESTS" = "true" ]; then
+              echo "::error::No tests found (tests/, test/ or test_*.py). AI-authored changes must ship with tests."
+              exit 1
+            else
+              summary "test: none found - skipped (require-tests=false)"
+            fi
+            exit 0
+          fi
+
+          # Node: corepack honours package.json "packageManager" (no third-party action needed).
+          export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+          corepack enable
+          case "$PM" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) if [ -f .yarnrc.yml ]; then yarn install --immutable; else yarn install --frozen-lockfile; fi ;;
+            npm)  if [ -f package-lock.json ]; then npm ci; else npm install; fi ;;
+          esac
+          summary "install: ${PM} ok"
+
+          has_script() { node -e 'const s=require("./package.json").scripts||{}; process.exit(s[process.argv[1]]?0:1)' "$1"; }
+          run_script() {
+            if [ "$PM" = "npm" ]; then npm run "$1"; else "$PM" run "$1"; fi
+          }
+
+          if has_script lint; then run_script lint; summary "lint: passed"; else summary "lint: no \`lint\` script - skipped"; fi
+
+          if has_script type-check; then run_script type-check; summary "type-check: passed"
+          elif has_script typecheck; then run_script typecheck; summary "typecheck: passed"
+          else summary "type-check: no \`type-check\`/\`typecheck\` script - skipped"; fi
+
+          if has_script test; then run_script test; summary "test: passed"
+          elif [ "$REQUIRE_TESTS" = "true" ]; then
+            echo "::error::No \`test\` script in package.json. AI-authored changes must ship with tests."
+            exit 1
+          else summary "test: no \`test\` script - skipped (require-tests=false)"; fi
+
+          if has_script build; then run_script build; summary "build: passed"; else summary "build: no \`build\` script - skipped"; fi
+
+      - name: Repo-specific governance command
+        if: inputs.extra-command != ''
+        env:
+          EXTRA_COMMAND: ${{ inputs.extra-command }}
+        run: |
+          set -euo pipefail
+          echo "Running: ${EXTRA_COMMAND}"
+          bash -c "${EXTRA_COMMAND}"
+          echo "- extra: \`${EXTRA_COMMAND}\` passed" >> "$GITHUB_STEP_SUMMARY"
+
+  policy:
+    name: policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Governance policy checks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          REQUIRE_ISSUE: ${{ inputs.require-issue-reference }}
+          ENFORCE_TITLE: ${{ inputs.enforce-conventional-title }}
+          STC_MODE: ${{ inputs.systems-thinking-contract }}
+        shell: python3 {0}
+        run: |
+          import json, os, re, subprocess, sys
+          from pathlib import Path
+
+          errors, warnings, passed = [], [], []
+          def err(m): errors.append(m); print(f"::error::{m}")
+          def warn(m): warnings.append(m); print(f"::warning::{m}")
+          def ok(m): passed.append(m); print(f"PASS  {m}")
+          def git(*a):
+              return subprocess.run(["git", *a], capture_output=True, text=True).stdout
+
+          event = os.environ.get("EVENT_NAME", "")
+          is_pr = event.startswith("pull_request")
+          MARKER = "AI-GOVERNANCE:v1"
+
+          # 1. AGENTS.md present and points at the canonical governance rules.
+          agents = Path("AGENTS.md")
+          if not agents.is_file():
+              err("AGENTS.md is missing at the repo root. Add the canonical section from KyPython/ai-governance/AGENTS.governance.md.")
+          elif MARKER not in agents.read_text(encoding="utf-8", errors="replace"):
+              err(f"AGENTS.md does not contain the `{MARKER}` governance section (copy it from KyPython/ai-governance/AGENTS.governance.md).")
+          else:
+              ok("AGENTS.md present with AI governance section")
+          claude = Path("CLAUDE.md")
+          if claude.is_file() and "AGENTS.md" not in claude.read_text(encoding="utf-8", errors="replace"):
+              warn("CLAUDE.md exists but does not reference AGENTS.md (LamportLogic uses `@AGENTS.md`).")
+
+          # 2. CODEOWNERS with a global owner so a human must review every path.
+          co = next((p for p in [Path(".github/CODEOWNERS"), Path("CODEOWNERS"), Path("docs/CODEOWNERS")] if p.is_file()), None)
+          if co is None:
+              err("CODEOWNERS is missing (.github/CODEOWNERS). Every path needs a human owner, e.g. `* @KyPython`.")
+          elif not any(l.split()[0] == "*" for l in co.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#") and len(l.split()) > 1):
+              err(f"{co} has no global `*` owner rule.")
+          else:
+              ok(f"{co} has a global owner")
+
+          # 3. Workflow security baseline: explicit permissions + SHA-pinned `uses:`.
+          wf_dir = Path(".github/workflows")
+          sha_re = re.compile(r"@[0-9a-f]{40}$")
+          for wf in sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml"))) if wf_dir.is_dir() else []:
+              text = wf.read_text(encoding="utf-8", errors="replace")
+              if not re.search(r"^\s*permissions\s*:", text, re.M):
+                  err(f"{wf}: no `permissions:` block (Security Baseline requires least-privilege permissions).")
+              for n, line in enumerate(text.splitlines(), 1):
+                  m = re.match(r"^\s*(?:-\s*)?uses\s*:\s*['\"]?([^'\"\s#]+)", line)
+                  if not m:
+                      continue
+                  ref = m.group(1)
+                  if ref.startswith("./") or ref.startswith("docker://"):
+                      continue
+                  if not sha_re.search(ref):
+                      err(f"{wf}:{n}: `{ref}` is not pinned to a full 40-char commit SHA.")
+          if wf_dir.is_dir():
+              ok("workflow security baseline evaluated")
+
+          if is_pr:
+              title = os.environ.get("PR_TITLE", "")
+              body = os.environ.get("PR_BODY", "") or ""
+              head_ref = os.environ.get("PR_HEAD_REF", "")
+
+              # 4. Conventional Commits title (squash-merge makes it the commit message).
+              cc = re.compile(r"^(feat|fix|docs|test|refactor|style|chore|ci|perf|build|revert)(\([^)]+\))?!?: .{1,100}$")
+              if cc.match(title):
+                  ok("PR title follows Conventional Commits")
+              elif os.environ.get("ENFORCE_TITLE") == "true":
+                  err(f"PR title `{title}` is not `<type>(<scope>): <description>` (types: feat|fix|docs|test|refactor|style|chore|ci|perf|build|revert).")
+              else:
+                  warn(f"PR title `{title}` is not a Conventional Commit.")
+
+              # 5. Issue reference (PR template: "Closes #").
+              if re.search(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|relates? to|refs?)\b:?\s+([\w.-]+/[\w.-]+)?#\d+", body) or re.search(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+", body):
+                  ok("PR references an issue")
+              elif head_ref.startswith("dependabot/"):
+                  ok("dependabot PR - issue reference not required")
+              elif os.environ.get("REQUIRE_ISSUE") == "true":
+                  err("PR body does not reference an issue (add `Closes #<n>` or `Relates to #<n>`).")
+              else:
+                  warn("PR body does not reference an issue (`Closes #<n>`).")
+
+          # 6. SYSTEMS_THINKING_CONTRACT for structural changes.
+          mode = (os.environ.get("STC_MODE") or "auto").lower()
+          contracts_dir = Path(".systems-thinking/contracts")
+          enforce_stc = mode == "required" or (mode == "auto" and contracts_dir.is_dir())
+          changed = []
+          if is_pr:
+              base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+              if base:
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
+              else:
+                  warn("Could not compute PR merge-base; skipping changed-file checks.")
+          structural_re = re.compile(r"^(packages/|\.github/workflows/|scripts/validate|docs/quality/|docs/architecture/|apps/tools/skeleton-base/)|(^|/)(AGENTS\.md|CLAUDE\.md|\.cursorrules(\.md)?|SPEC\.md|empire-spec\.md)$|^\.cursor/rules/")
+          structural = [f for f in changed if structural_re.search(f)]
+          if enforce_stc and structural:
+              contracts = [f for f in changed if f.startswith(".systems-thinking/contracts/") and f.endswith(".json")]
+              if not contracts:
+                  err("Structural change without a SYSTEMS_THINKING_CONTRACT. Add .systems-thinking/contracts/<date>-<slug>.json covering: " + ", ".join(structural))
+              else:
+                  keys = ["event", "pattern", "structure", "archetype", "intervention", "leading_indicators", "transfer"]
+                  scopes = []
+                  for c in contracts:
+                      try:
+                          d = json.loads(Path(c).read_text())
+                      except Exception as e:
+                          err(f"{c}: invalid JSON ({e})"); continue
+                      if d.get("type") != "SYSTEMS_THINKING_CONTRACT":
+                          err(f"{c}: `type` must be SYSTEMS_THINKING_CONTRACT")
+                      missing = [k for k in keys if not str(d.get(k, "")).strip()]
+                      if missing:
+                          err(f"{c}: empty or missing steps: {', '.join(missing)}")
+                      scopes += [s for s in d.get("scope", []) if isinstance(s, str)]
+                  uncovered = [f for f in structural if not any(f == s or f.startswith(s.rstrip("/") + "/") or (s.endswith("/") and f.startswith(s)) for s in scopes)]
+                  if uncovered:
+                      err("SYSTEMS_THINKING_CONTRACT scope does not cover: " + ", ".join(uncovered))
+                  else:
+                      ok("SYSTEMS_THINKING_CONTRACT covers all structural paths")
+          elif structural:
+              warn("Structural paths changed (no contract enforced in this repo): " + ", ".join(structural))
+
+          # 7. Governance files touched -> human code-owner review is mandatory.
+          gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
+          if gov:
+              print("::notice::This PR changes governance files; code-owner (human) approval is required: " + ", ".join(gov))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write("### policy\n")
+              for p in passed: s.write(f"- PASS {p}\n")
+              for w in warnings: s.write(f"- WARN {w}\n")
+              for e in errors: s.write(f"- FAIL {e}\n")
+          sys.exit(1 if errors else 0)
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks (pinned + checksum verified)
+        run: |
+          set -euo pipefail
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 -o "/tmp/${tarball}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${tarball}"
+          echo "${GITLEAKS_SHA256}  /tmp/${tarball}" | sha256sum --check --strict
+          tar -xzf "/tmp/${tarball}" -C /tmp gitleaks
+          install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+
+      - name: Scan commit range (fail-closed)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          have() { [ -n "${1:-}" ] && git cat-file -e "${1}^{commit}" 2>/dev/null; }
+          log_opts="--all --full-history"
+          if [ "$EVENT_NAME" = "pull_request" ] && have "$PR_BASE_SHA" && have "$PR_HEAD_SHA"; then
+            log_opts="--no-merges $(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")..${PR_HEAD_SHA}"
+          elif [ "$EVENT_NAME" = "push" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] && have "$PUSH_BEFORE"; then
+            log_opts="--no-merges ${PUSH_BEFORE}..${PUSH_AFTER}"
+          fi
+          echo "gitleaks --log-opts=\"${log_opts}\""
+          config_args=()
+          if [ -f .gitleaks.toml ]; then config_args=(--config .gitleaks.toml); fi
+          gitleaks git . "${config_args[@]}" --log-opts "${log_opts}" --redact=100 --exit-code=2 --no-banner --verbose
+          status=$?
+          if [ "$status" = "0" ]; then
+            echo "- secret-scan: no secrets in \`${log_opts}\`" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          elif [ "$status" = "2" ]; then
+            echo "::error::gitleaks found credential material. Rotate it at the provider first, then rewrite it out of the branch history (deleting in a later commit is not enough)."
+            exit 1
+          fi
+          echo "::error::gitleaks failed to run (exit ${status}). Failing closed."
+          exit 1
+
+  verdict:
+    name: verdict
+    if: always()
+    needs: [quality, policy, secret-scan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      verdict: ${{ steps.v.outputs.verdict }}
+    steps:
+      - id: v
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          POLICY: ${{ needs.policy.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+        run: |
+          echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS}"
+          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$QUALITY" = "success" ] && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
+            echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "verdict=fail" >> "$GITHUB_OUTPUT"
+          echo "::error::AI governance gate failed. Fix the failing job(s); do not bypass, weaken, or edit the gate to pass."
+          exit 1

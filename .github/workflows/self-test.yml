@@ -1,0 +1,16 @@
+name: AI Governance self-test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ai-governance:
+    uses: ./.github/workflows/governance.yml
+    with:
+      require-tests: false
