@@ -264,14 +264,14 @@ jobs:
           if is_pr:
               base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
               if base:
-                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACDMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
                   have_range = True
               else:
                   warn("Could not compute PR merge-base; skipping changed-file checks.")
           elif event == "push":
               before, after = os.environ.get("PUSH_BEFORE", ""), os.environ.get("PUSH_AFTER", "")
               if before and set(before) != {"0"} and subprocess.run(["git", "cat-file", "-e", before + "^{commit}"]).returncode == 0:
-                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{before}..{after}").splitlines() if l]
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACDMR", f"{before}..{after}").splitlines() if l]
                   have_range = True
 
           # 3. Workflow security baseline: explicit permissions + SHA-pinned `uses:`.
@@ -331,7 +331,7 @@ jobs:
           structural_re = re.compile(r"^(packages/|\.github/workflows/|scripts/validate|docs/quality/|docs/architecture/|apps/tools/skeleton-base/)|(^|/)(AGENTS\.md|CLAUDE\.md|\.cursorrules(\.md)?|SPEC\.md|empire-spec\.md)$|^\.cursor/rules/")
           structural = [f for f in changed if structural_re.search(f)]
           if enforce_stc and structural:
-              contracts = [f for f in changed if f.startswith(".systems-thinking/contracts/") and f.endswith(".json")]
+              contracts = [f for f in changed if f.startswith(".systems-thinking/contracts/") and f.endswith(".json") and Path(f).is_file()]
               if not contracts:
                   err("Structural change without a SYSTEMS_THINKING_CONTRACT. Add .systems-thinking/contracts/<date>-<slug>.json covering: " + ", ".join(structural))
               else:
@@ -402,10 +402,11 @@ jobs:
           have() { [ -n "${1:-}" ] && git cat-file -e "${1}^{commit}" 2>/dev/null; }
           log_opts="--all --full-history"
           if [ "$EVENT_NAME" = "pull_request" ] && have "$PR_BASE_SHA" && have "$PR_HEAD_SHA"; then
-            log_opts="--no-merges $(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")..${PR_HEAD_SHA}"
+            log_opts="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")..${PR_HEAD_SHA}"
           elif [ "$EVENT_NAME" = "push" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] && have "$PUSH_BEFORE"; then
-            log_opts="--no-merges ${PUSH_BEFORE}..${PUSH_AFTER}"
+            log_opts="${PUSH_BEFORE}..${PUSH_AFTER}"
           fi
+          # Merge commits are included on purpose: a conflict resolution can introduce a secret.
           echo "gitleaks --log-opts=\"${log_opts}\""
           config_args=()
           if [ -f .gitleaks.toml ]; then config_args=(--config .gitleaks.toml); fi
