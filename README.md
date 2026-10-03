@@ -2,7 +2,7 @@
 
 Ky's AI governance, tests, and CI rules live here and apply to every repo AI agents work in (Kiro, Codex, Cursor, Grok Bot, Claude Code, Copilot). The rules come from `KyLamportLogic/LamportLogic`.
 
-**The gate:** agent code cannot merge to `main` (and so cannot deploy) unless the `ai-governance / verdict` check passes **and** Ky approves the PR as CODEOWNER.
+**The gate:** agent code cannot merge to `main` (and so cannot deploy) unless the repo's own CI and the `ai-governance / verdict` check pass. Checks are the gate, and only Ky merges.
 
 ## What's here
 
@@ -29,7 +29,7 @@ The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes
 
 ### Inputs
 
-`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
+`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
 
 ## Opt a repo in
 
@@ -44,16 +44,17 @@ GITHUB_TOKEN=<pat with repo+workflow> ./scripts/optin.sh <repo-name>
 # 3. Ky reviews and merges the opt-in PR.
 ```
 
-To do it by hand: copy `templates/ai-governance.yml` to `.github/workflows/ai-governance.yml`, replace `__AI_GOVERNANCE_SHA__` with the current `main` SHA of this repo, paste `AGENTS.governance.md` near the top of `AGENTS.md`, and add `* @KyPython` to `.github/CODEOWNERS`. Then add the branch protection on `main`:
+To do it by hand: copy `templates/ai-governance.yml` to `.github/workflows/ai-governance.yml`, replace `__AI_GOVERNANCE_SHA__` with the current `main` SHA of this repo, paste `AGENTS.governance.md` near the top of `AGENTS.md`, and add `* @KyPython` to `.github/CODEOWNERS`. Then add the branch protection on `main` (the "checks are the gate" model):
 
-- require a PR
-- 1 approving review
-- code-owner review
-- required check `ai-governance / verdict`
-- no force pushes
-- no deletions
+- require a PR, with 0 required approvals (no code-owner review, no last-push approval)
+- required checks: the repo's own CI that runs on every PR, plus `ai-governance / verdict`
+- strict (branch must be up to date)
+- conversation resolution required
+- linear history
+- no force pushes, no deletions
+- enforced on admins
 
-**Access:** this repo is private, so its Actions access setting is "Accessible from repositories owned by the user KyPython" (`PUT /repos/KyPython/ai-governance/actions/permissions/access` with `{"access_level":"user"}`). Only repos owned by KyPython can call the gate. Repos in the `KyLamportLogic` org cannot call it while it is private; they would need a copy of the workflow in that org.
+**Access:** this repo is public, so any repo can call the gate: KyPython repos, `KyLamportLogic` org repos, private or public. A private reusable workflow can only be shared with repos owned by the same account. The repo holds no secrets; that was checked with gitleaks before publishing.
 
 **Updating the gate:** callers pin a commit SHA, so a change here affects nobody until each repo bumps its SHA in a PR that Ky approves. That stops an agent from weakening the gate for every repo in one edit.
 
@@ -76,5 +77,6 @@ For hosted deploys (Vercel, Cloudflare, etc.), restrict production deploys to th
 
 ## Limits (be honest)
 
-- GitHub enforces "Ky approves" only when the PR author is **not** Ky's own account, because GitHub never lets authors approve their own PRs. If agents push and open PRs with Ky's personal token, the PR is authored by `KyPython`. With `enforce_admins` on, it can then never collect the required approval. With admin bypass on, anything holding Ky's admin token, agents included, can bypass. The robust fix is to give agents their own identity (a GitHub App / bot account, or the Cursor/Codex GitHub apps) with write access but not admin, so Ky's review is the real gate.
-- Branch protection and rulesets on **private** repos need GitHub Pro, Team, or Enterprise. The KyPython account is on Pro.
+- The protection model has no approval requirement on purpose: agents push with Ky's account, and GitHub never lets authors approve their own PRs. The checks are the gate. Branch protection cannot stop a holder of Ky's admin token from merging their own PR once checks pass. That rule lives in AGENTS.md, so keep agents' tokens scoped where possible.
+- (Historical) GitHub enforces "Ky approves" only when the PR author is **not** Ky's own account, because GitHub never lets authors approve their own PRs. If agents push and open PRs with Ky's personal token, the PR is authored by `KyPython`. With `enforce_admins` on, it can then never collect the required approval. With admin bypass on, anything holding Ky's admin token, agents included, can bypass. The robust fix is to give agents their own identity (a GitHub App / bot account, or the Cursor/Codex GitHub apps) with write access but not admin, so Ky's review is the real gate.
+- Branch protection and rulesets on **private** repos need a paid plan. The KyPython account is on Pro, so its private repos work. The `KyLamportLogic` org is on Free, so its private repos return `403 Upgrade to GitHub Pro or make this repository public`; fixing that needs GitHub Team, $4/user/month. Org-wide rulesets also need Team, and "require workflows" rulesets need Enterprise.
