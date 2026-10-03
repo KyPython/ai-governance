@@ -68,6 +68,20 @@ The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md
 3. GATE-4.3 WHEN the test output comes from Jest, Vitest, pytest, unittest, node:test, or Mocha THEN the system SHALL parse passed, failed, and total counts from it. For any other runner, the system SHALL report them as null.
 4. GATE-4.4 The system SHALL NOT let the scorecard change the verdict's pass/fail outcome.
 
+### Requirement 5: Strict-repo parity (GATE-5)
+
+**User Story:** As Ky, I want every repo held to the controls of LamportLogic, human-rebuild-bootcamp and ky-cloud-control-plane, so that no repo is weaker than my strictest ones.
+
+#### Acceptance Criteria
+
+1. GATE-5.1 WHEN a pull request adds a line using `jwt.sign`, `jwt.verify` or `jsonwebtoken` in a JavaScript/TypeScript source file outside `packages/auth/`, `packages/security/` or `packages/database/` THEN the system SHALL fail the policy job.
+2. GATE-5.2 WHEN a pull request adds a line containing `new PrismaClient` in such a source file THEN the system SHALL fail the policy job.
+3. GATE-5.3 WHEN a pull request adds a destructive command (force push, `git reset --hard`, destructive `git clean`, database reset or drop, `terraform destroy`, `rm -rf /`) to a script, workflow, Dockerfile, Makefile, `.husky/` hook or `package.json` THEN the system SHALL fail the policy job.
+4. GATE-5.4 WHEN a pull request adds or changes a deploy, release or publish workflow that runs on pull_request events, uses `workflow_run` without checking `conclusion == 'success'`, or deploys on push without a branch filter THEN the system SHALL fail the policy job.
+5. GATE-5.5 WHEN a pull request adds or changes a Dockerfile whose base image is unversioned or `:latest`, or whose final stage runs as root THEN the system SHALL fail the policy job.
+6. GATE-5.6 WHEN the gate runs THEN the system SHALL run a `security` job that the verdict requires. The job SHALL run hash-pinned zizmor at medium severity on in-scope workflows and shellcheck at error severity on changed shell scripts.
+7. GATE-5.7 WHEN a pull request changes a dependency manifest or lockfile AND the head introduces a known vulnerability (OSV) absent from the base THEN the system SHALL fail the security job.
+
 #### Known limit (GATE-3)
 
 Git author and committer fields are self-declared, and agents that push with Ky's token appear as KyPython (the owner override). GATE-3 therefore proves only the identities that commits and PRs declare. It cannot tell an agent using Ky's token from Ky himself.
