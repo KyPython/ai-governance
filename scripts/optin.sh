@@ -3,35 +3,35 @@
 #
 #   optin.sh <repo>              open a PR adding the governance caller workflow,
 #                                the canonical AGENTS.md section and CODEOWNERS
-#   optin.sh --protect <repo>    after the PR's checks ran once, require
-#                                "ai-governance / verdict" + 1 code-owner approval on main
-#        [--strict-admins]       with --protect on a repo that has no protection yet:
-#                                also enforce on admins (default: admin bypass allowed so
-#                                Ky is never locked out)
+#   optin.sh --protect <repo>    once "ai-governance / verdict" has passed, protect the
+#                                default branch: PR required, required checks = repo CI that
+#                                ran on the PR + verdict, strict, conversation resolution,
+#                                linear history, no force-push/deletion, enforce on admins,
+#                                0 approvals (checks are the gate; Ky merges).
+#                                DRY_RUN=1 prints the plan without changing anything.
 #
 # <repo> is "name" (owner defaults to KyPython) or "owner/name".
-# Auth: GITHUB_TOKEN or GITHUB_RELAY_ISSUES_TOKEN (classic PAT: repo, workflow). Never printed.
+# Auth: GITHUB_TOKEN (classic PAT: repo, workflow; admin on the repo for --protect). Never printed.
 # Never merges, deletes, or changes visibility.
 set -euo pipefail
 
 GOV_REPO="KyPython/ai-governance"
 BRANCH="governance/enforce-ai-governance"
 CHECK="ai-governance / verdict"
-ACTIONS_APP_ID=15368
-TOKEN="${GITHUB_TOKEN:-${GITHUB_RELAY_ISSUES_TOKEN:-}}"
-[ -n "$TOKEN" ] || { echo "Set GITHUB_TOKEN or GITHUB_RELAY_ISSUES_TOKEN" >&2; exit 2; }
+ACTIONS_APP_ID=15368   # GitHub Actions app
+TOKEN="${GITHUB_TOKEN:-}"
+[ -n "$TOKEN" ] || { echo "Set GITHUB_TOKEN" >&2; exit 2; }
 export TOKEN
 
-MODE=optin; STRICT_ADMINS=false; REPO=""
+MODE=optin; REPO=""
 for a in "$@"; do
   case "$a" in
     --protect) MODE=protect ;;
-    --strict-admins) STRICT_ADMINS=true ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) REPO="$a" ;;
   esac
 done
-[ -n "$REPO" ] || { sed -n '2,16p' "$0"; exit 2; }
+[ -n "$REPO" ] || { sed -n '2,17p' "$0"; exit 2; }
 [[ "$REPO" == */* ]] || REPO="KyPython/$REPO"
 
 # api METHOD PATH [JSON]  -> prints body; HTTP status via $(st) (works inside $(...))
@@ -52,48 +52,75 @@ DEFAULT_BRANCH=$(api GET "/repos/$REPO" | jget 'd.get("default_branch","")')
 [ "$(st)" = 200 ] || { echo "Cannot read $REPO (HTTP $(st))" >&2; exit 1; }
 
 if [ "$MODE" = protect ]; then
-  # Only require the check once it has actually run, so the context name is real.
-  HEAD_SHA=$(api GET "/repos/$REPO/commits/$BRANCH" | jget 'd.get("sha","")' 2>/dev/null || true)
-  [ -n "$HEAD_SHA" ] || HEAD_SHA=$(api GET "/repos/$REPO/commits/$DEFAULT_BRANCH" | jget 'd["sha"]')
-  RUNS=$(api GET "/repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$CHECK")" | jget 'd.get("total_count",0)')
-  if [ "$RUNS" = 0 ]; then
-    echo "Check \"$CHECK\" has not run on $REPO yet (looked at $HEAD_SHA). Open the opt-in PR first, wait for checks, then re-run." >&2
-    exit 1
-  fi
-  PROT=$(api GET "/repos/$REPO/branches/$DEFAULT_BRANCH/protection")
-  if [ "$(st)" = 200 ] && [ "$(echo "$PROT" | jget 'bool(d.get("required_status_checks"))')" = True ]; then
-    BODY=$(echo "$PROT" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)['required_status_checks']
-checks=[{'context':c['context'],'app_id':c.get('app_id')} for c in d.get('checks',[])]
-checks=[{k:v for k,v in c.items() if v is not None} for c in checks]
-if not any(c['context']==sys.argv[1] for c in checks): checks.append({'context':sys.argv[1],'app_id':int(sys.argv[2])})
-print(json.dumps({'strict':d.get('strict',True),'checks':checks}))" "$CHECK" "$ACTIONS_APP_ID")
-    RESP=$(api PATCH "/repos/$REPO/branches/$DEFAULT_BRANCH/protection/required_status_checks" "$BODY")
-    echo "PATCH required_status_checks -> HTTP $(st)"
-  elif [ "$(st)" = 404 ] || [ "$(st)" = 200 ]; then
-    if [ "$(st)" = 200 ]; then
-      echo "Branch protection exists without required checks; add \"$CHECK\" in Settings > Branches to avoid overwriting it." >&2; exit 1
-    fi
-    ENFORCE=false; [ "$STRICT_ADMINS" = true ] && ENFORCE=true
-    BODY=$(python3 -c "
-import json,sys
-print(json.dumps({
- 'required_status_checks':{'strict':True,'checks':[{'context':sys.argv[1],'app_id':int(sys.argv[2])}]},
- 'enforce_admins':sys.argv[3]=='true',
- 'required_pull_request_reviews':{'required_approving_review_count':1,'require_code_owner_reviews':True,'dismiss_stale_reviews':True},
- 'restrictions':None,'allow_force_pushes':False,'allow_deletions':False,'required_conversation_resolution':True}))" "$CHECK" "$ACTIONS_APP_ID" "$ENFORCE")
-    RESP=$(api PUT "/repos/$REPO/branches/$DEFAULT_BRANCH/protection" "$BODY")
-    echo "PUT branch protection -> HTTP $(st) (enforce_admins=$ENFORCE)"
-  else
-    RESP="$PROT"
-  fi
-  case "$(st)" in
-    200|201) echo "Protected $REPO@$DEFAULT_BRANCH: PR + 1 code-owner approval + \"$CHECK\" required, no force-push/deletion." ;;
-    403) echo "HTTP 403: $(echo "$RESP" | jget 'd.get("message")'). Private repos on GitHub Free cannot use branch protection; GitHub Pro (~\$4/mo) or a public repo is required." >&2; exit 1 ;;
-    *) echo "HTTP $(st): $RESP" >&2; exit 1 ;;
-  esac
-  exit 0
+  # Protection model (Ky, 2026-10-03): PR required; required checks = the repo's own CI
+  # that actually ran on a PR + "ai-governance / verdict"; strict up-to-date; conversation
+  # resolution; linear history; no force-push/deletion; enforce on admins; 0 approvals
+  # (checks are the gate, Ky merges). Only applied once the verdict has run successfully.
+  REPO="$REPO" BRANCH="$BRANCH" CHECK="$CHECK" APP="$ACTIONS_APP_ID" DEFAULT_BRANCH="$DEFAULT_BRANCH" DRY_RUN="${DRY_RUN:-0}" python3 - <<'PY2'
+import json, os, re, sys, urllib.request, urllib.error, urllib.parse
+T=os.environ["TOKEN"]; R=os.environ["REPO"]; CHECK=os.environ["CHECK"]; APP=int(os.environ["APP"]); DB=os.environ["DEFAULT_BRANCH"]
+def api(method, path, body=None, raw=False):
+    req=urllib.request.Request("https://api.github.com"+path, method=method, data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization":"token "+T,"Accept":"application/vnd.github.raw" if raw else "application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"})
+    try:
+        with urllib.request.urlopen(req) as r:
+            b=r.read(); return r.status, (b.decode() if raw else (json.loads(b) if b else None))
+    except urllib.error.HTTPError as e:
+        b=e.read()
+        try: return e.code, json.loads(b)
+        except Exception: return e.code, b.decode(errors="replace")
+s,br=api("GET",f"/repos/{R}/branches/{urllib.parse.quote(os.environ['BRANCH'],safe='')}")
+sha=br["commit"]["sha"] if s==200 else api("GET",f"/repos/{R}/commits/{DB}")[1]["sha"]
+_,cr=api("GET",f"/repos/{R}/commits/{sha}/check-runs?per_page=100&filter=latest")
+runs=[c for c in cr.get("check_runs",[]) if (c.get("app") or {}).get("id")==APP]
+verdict=[c for c in runs if c["name"]==CHECK]
+if not verdict or verdict[0]["conclusion"]!="success":
+    print(f"NOT PROTECTED: '{CHECK}' has not passed on {sha[:7]} (state: {verdict[0]['conclusion'] if verdict else 'never ran'}).", file=sys.stderr); sys.exit(3)
+_,wr=api("GET",f"/repos/{R}/actions/runs?head_sha={sha}&per_page=100")
+suite={w["check_suite_id"]:w for w in wr.get("workflow_runs",[])}
+wf_text={}
+def path_filtered(path):
+    if path not in wf_text:
+        s,t=api("GET",f"/repos/{R}/contents/{path}?ref={sha}",raw=True); wf_text[path]=t if s==200 else ""
+    return bool(re.search(r"^\s*(paths|paths-ignore|branches-ignore)\s*:", wf_text[path], re.M))
+req, skipped = {CHECK}, []
+for c in runs:
+    if c["name"]==CHECK: continue
+    w=suite.get((c.get("check_suite") or {}).get("id"))
+    if not w: skipped.append(f"{c['name']} (no workflow run)"); continue
+    if w["path"].endswith("/ai-governance.yml") or w["path"].endswith("/self-test.yml"): continue
+    if path_filtered(w["path"]): skipped.append(f"{c['name']} (path/branch-filtered {w['path']})"); continue
+    if w["event"]!="pull_request" and not re.search(r"^\s*(pull_request\s*:|pull_request\s*$|-\s*pull_request\s*$|on\s*:.*\bpull_request\b)", wf_text.get(w["path"],""), re.M):
+        skipped.append(f"{c['name']} (does not run on pull_request)"); continue
+    if c["conclusion"] not in ("success","skipped","neutral"): skipped.append(f"{c['name']} ({c['conclusion']} on PR - fix before requiring)"); continue
+    req.add(c["name"])
+s,prot=api("GET",f"/repos/{R}/branches/{DB}/protection")
+if s==200:
+    for c in (prot.get("required_status_checks") or {}).get("checks",[]):
+        if c["context"] not in req: skipped.append(f"{c['context']} (previously required, did not run on PR - dropped)")
+elif s==403:
+    print(f"NOT PROTECTED: HTTP 403 {prot.get('message') if isinstance(prot,dict) else prot}", file=sys.stderr); sys.exit(4)
+_,repo=api("GET",f"/repos/{R}")
+linear = bool(repo.get("allow_squash_merge") or repo.get("allow_rebase_merge"))
+body={"required_status_checks":{"strict":True,"checks":[{"context":c,"app_id":APP} for c in sorted(req)]},
+      "enforce_admins":True,
+      "required_pull_request_reviews":{"required_approving_review_count":0,"require_code_owner_reviews":False,"require_last_push_approval":False,"dismiss_stale_reviews":False},
+      "restrictions":None,"required_linear_history":linear,"allow_force_pushes":False,"allow_deletions":False,
+      "required_conversation_resolution":True,"block_creations":False,"lock_branch":False}
+print(f"{R}@{DB}: required checks = {sorted(req)}")
+for x in skipped: print(f"  not required: {x}")
+if not linear: print("  linear history NOT required: repo allows neither squash nor rebase merges")
+if os.environ.get("DRY_RUN")=="1":
+    print("DRY RUN - protection not changed"); sys.exit(0)
+s,resp=api("PUT",f"/repos/{R}/branches/{DB}/protection",body)
+if s in (200,201):
+    print(f"PROTECTED {R}@{DB} (HTTP {s}): PR required, 0 approvals, strict checks, conversation resolution, linear={linear}, no force-push/deletion, enforce_admins")
+    sys.exit(0)
+msg=resp.get("message") if isinstance(resp,dict) else resp
+print(f"NOT PROTECTED: HTTP {s} {msg}" + (" (private repo on a free plan: needs GitHub Pro/Team or a public repo)" if s==403 else ""), file=sys.stderr)
+sys.exit(4)
+PY2
+  exit $?
 fi
 
 # ---- opt-in PR ----
@@ -156,7 +183,9 @@ PR_BODY="Opts this repo into the shared AI governance gate from [$GOV_REPO](http
 - \`.github/workflows/ai-governance.yml\` calls the reusable gate (install, lint, type-check, test, build, policy, gitleaks) on PRs and pushes to \`$DEFAULT_BRANCH\`.
 - \`AGENTS.md\` gains the canonical \`AI-GOVERNANCE:v1\` section all agents must follow.
 
-After checks run once: \`optin.sh --protect $REPO\` makes \`$CHECK\` + 1 code-owner approval required. Do not merge without Ky's review."
+Systems thinking: event = AI agents open PRs here; pattern = governance lived only in LamportLogic; structure = no shared, versioned gate; intervention = SHA-pinned reusable gate + required checks; leading indicator = every PR shows \`$CHECK\`; transfer = same opt-in for every repo.
+
+Once \`$CHECK\` has passed, the default branch is protected: PR required, this repo's CI + \`$CHECK\` required, strict, linear history, conversation resolution, no force-push/deletion, enforce on admins. Ky merges."
 BODY=$(python3 -c 'import json,sys; print(json.dumps({"title":"ci(governance): enforce shared AI governance gate","head":sys.argv[1],"base":sys.argv[2],"body":sys.argv[3]}))' "$BRANCH" "$DEFAULT_BRANCH" "$PR_BODY")
 URL=$(api POST "/repos/$REPO/pulls" "$BODY" | jget 'd.get("html_url") or d')
 echo "Opened PR: $URL"

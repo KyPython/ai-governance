@@ -37,6 +37,16 @@ on:
         description: Directory containing the project manifest.
         type: string
         default: "."
+      run-quality:
+        description: >
+          Run the quality job (install/lint/type-check/test/build). Set false only when the
+          repo's own required CI already runs those on every PR (e.g. a heavy monorepo).
+        type: boolean
+        default: true
+      workflow-baseline:
+        description: "Workflow security baseline scope: changed (workflows touched by the PR/push), all, off"
+        type: string
+        default: "changed"
       require-tests:
         description: Fail when a project is detected but has no test command.
         type: boolean
@@ -72,6 +82,7 @@ env:
 jobs:
   quality:
     name: quality
+    if: inputs.run-quality
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -210,6 +221,7 @@ jobs:
           REQUIRE_ISSUE: ${{ inputs.require-issue-reference }}
           ENFORCE_TITLE: ${{ inputs.enforce-conventional-title }}
           STC_MODE: ${{ inputs.systems-thinking-contract }}
+          BASELINE_MODE: ${{ inputs.workflow-baseline }}
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -247,10 +259,32 @@ jobs:
           else:
               ok(f"{co} has a global owner")
 
+          # Files changed by this PR / push (used by baseline, contract and notice checks).
+          changed, have_range = [], False
+          if is_pr:
+              base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+              if base:
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
+                  have_range = True
+              else:
+                  warn("Could not compute PR merge-base; skipping changed-file checks.")
+          elif event == "push":
+              before, after = os.environ.get("PUSH_BEFORE", ""), os.environ.get("PUSH_AFTER", "")
+              if before and set(before) != {"0"} and subprocess.run(["git", "cat-file", "-e", before + "^{commit}"]).returncode == 0:
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{before}..{after}").splitlines() if l]
+                  have_range = True
+
           # 3. Workflow security baseline: explicit permissions + SHA-pinned `uses:`.
+          #    "changed" (default) blocks NEW violations without failing on pre-existing debt.
+          bmode = (os.environ.get("BASELINE_MODE") or "changed").lower()
           wf_dir = Path(".github/workflows")
           sha_re = re.compile(r"@[0-9a-f]{40}$")
-          for wf in sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml"))) if wf_dir.is_dir() else []:
+          all_wfs = sorted(list(wf_dir.glob("*.yml")) + list(wf_dir.glob("*.yaml"))) if wf_dir.is_dir() else []
+          if bmode == "off":
+              all_wfs = []
+          elif bmode == "changed" and have_range:
+              all_wfs = [w for w in all_wfs if str(w) in changed]
+          for wf in all_wfs:
               text = wf.read_text(encoding="utf-8", errors="replace")
               if not re.search(r"^\s*permissions\s*:", text, re.M):
                   err(f"{wf}: no `permissions:` block (Security Baseline requires least-privilege permissions).")
@@ -263,8 +297,8 @@ jobs:
                       continue
                   if not sha_re.search(ref):
                       err(f"{wf}:{n}: `{ref}` is not pinned to a full 40-char commit SHA.")
-          if wf_dir.is_dir():
-              ok("workflow security baseline evaluated")
+          if wf_dir.is_dir() and bmode != "off":
+              ok(f"workflow security baseline evaluated ({bmode}: {len(all_wfs)} file(s))")
 
           if is_pr:
               title = os.environ.get("PR_TITLE", "")
@@ -294,13 +328,6 @@ jobs:
           mode = (os.environ.get("STC_MODE") or "auto").lower()
           contracts_dir = Path(".systems-thinking/contracts")
           enforce_stc = mode == "required" or (mode == "auto" and contracts_dir.is_dir())
-          changed = []
-          if is_pr:
-              base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
-              if base:
-                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
-              else:
-                  warn("Could not compute PR merge-base; skipping changed-file checks.")
           structural_re = re.compile(r"^(packages/|\.github/workflows/|scripts/validate|docs/quality/|docs/architecture/|apps/tools/skeleton-base/)|(^|/)(AGENTS\.md|CLAUDE\.md|\.cursorrules(\.md)?|SPEC\.md|empire-spec\.md)$|^\.cursor/rules/")
           structural = [f for f in changed if structural_re.search(f)]
           if enforce_stc and structural:
@@ -332,7 +359,7 @@ jobs:
           # 7. Governance files touched -> human code-owner review is mandatory.
           gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
           if gov:
-              print("::notice::This PR changes governance files; code-owner (human) approval is required: " + ", ".join(gov))
+              print("::notice::This PR changes governance files; Ky must review these before merging: " + ", ".join(gov))
 
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
               s.write("### policy\n")
@@ -408,10 +435,11 @@ jobs:
           QUALITY: ${{ needs.quality.result }}
           POLICY: ${{ needs.policy.result }}
           SECRETS: ${{ needs.secret-scan.result }}
+          RUN_QUALITY: ${{ inputs.run-quality }}
         run: |
           echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS}"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$QUALITY" = "success" ] && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
+          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "verdict=fail" >> "$GITHUB_OUTPUT"
