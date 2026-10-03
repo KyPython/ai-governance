@@ -13,7 +13,9 @@ Ky's AI governance, tests, and CI rules live here and apply to every repo AI age
 | `templates/ai-governance.yml` | Caller workflow that goes in each repo |
 | `scripts/optin.sh` | One command to opt a repo in, plus `--protect` to apply the protection model |
 | `scripts/sweep.sh` | Finds every owned/admin repo without the gate; report-only by default, `--apply` opens opt-in PRs and protects repos whose verdict has passed. Optional `scripts/sweep.skip` (`owner/repo reason` per line, kept out of git) lists exclusions |
-| `.github/workflows/self-test.yml` | This repo dogfoods its own gate |
+| `.github/workflows/self-test.yml` | This repo dogfoods its own gate and runs `tests/` (behavioral tests of the policy script) |
+| `templates/spec/` | Spec templates: `requirements.md`, `design.md`, `tasks.md` |
+| `specs/ai-governance-gate/` | The gate's own spec (the requirements the tests in `tests/` trace to) |
 
 ## What the gate checks
 
@@ -22,15 +24,41 @@ All jobs run on `pull_request` and on `push` to `main`.
 | Job | Checks | LamportLogic source |
 | --- | --- | --- |
 | `quality` | Detects pnpm / yarn / npm (via corepack) or Python. Runs install (frozen lockfile), then `lint`, `type-check`/`typecheck`, `test`, `build` if those scripts exist; Python uses ruff, mypy, and pytest when configured. Missing tests fail unless `require-tests: false`. Optional `extra-command` runs repo-specific gates, e.g. `pnpm validate:all`. | `ci.yml`, `.claude/hooks/verify-before-stop.mjs` |
-| `policy` | `AGENTS.md` contains the `AI-GOVERNANCE:v1` section. CODEOWNERS has a global `*` owner. Every workflow has a `permissions:` block and SHA-pinned `uses:`. On PRs: the title follows Conventional Commits, and the body references an issue (warning only by default). Structural changes need a valid `SYSTEMS_THINKING_CONTRACT` covering every structural path (`auto` = enforced when `.systems-thinking/contracts/` exists). If governance files change, a notice flags that code-owner review is needed. | `AGENTS.md`, `CLAUDE.md`, `CODEOWNERS`, `.husky/commit-msg`, PR template, `validate-security-baseline.js`, `.systems-thinking/` |
+| `policy` | `AGENTS.md` contains the `AI-GOVERNANCE:v1` section. CODEOWNERS has a global `*` owner. Every workflow has a `permissions:` block and SHA-pinned `uses:`. On PRs: the title follows Conventional Commits, and the body references an issue. A missing reference is a warning by default and an error for code PRs or when `require-issue-reference: true`. The **spec gate** (below) runs on every PR. Structural changes need a valid `SYSTEMS_THINKING_CONTRACT` covering every structural path (`auto` = enforced when `.systems-thinking/contracts/` exists). If governance files change, a notice flags that code-owner review is needed. | `AGENTS.md`, `CLAUDE.md`, `CODEOWNERS`, `.husky/commit-msg`, PR template, `validate-security-baseline.js`, `.systems-thinking/` |
 | `secret-scan` | gitleaks 8.30.1 binary, pinned by checksum, over the **whole PR commit range** (not just the tip). Uses the repo's `.gitleaks.toml` if it has one. Fails closed. | `secret-scan.yml`, `.gitleaks.toml` |
 | `verdict` | A single aggregate check that fails closed. **Make this the one required status check.** | n/a |
 
 The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes in repos that set "allowed actions: selected" and "require SHA pinning".
 
+### Spec gate (no spec, no code)
+
+Every PR that changes a **code path** fails `policy` (and therefore `verdict`) unless it does all three of these:
+
+1. **Links an issue** in the body: `Closes #N`, `Relates to #N`, or an issue URL.
+2. **Has a spec.** It adds or changes a file in `specs/<slug>/` or `.kiro/specs/<slug>/`, or references an existing spec with a `Spec: specs/<slug>` line in the body. That folder's `requirements.md` must contain at least one numbered EARS acceptance criterion: a stable ID `<PREFIX>-<n>.<m>` on a line containing `SHALL`, e.g. `1. GOV-1.1 WHEN … THEN the system SHALL …`.
+3. **Traces tests to the spec.** It adds or changes a test file (`*.test.*`, `*.spec.*`, `test_*.py`, `*_test.*`, `tests/`, `__tests__/`) whose path or content cites one of those criterion IDs (`GOV-1.1`) or requirement IDs (`GOV-1`).
+
+**Exempt by path only.** A PR is exempt when *every* changed path is one of these:
+
+- docs (`*.md`, `docs/`, images, `.cursorrules`, `.cursor/rules/`);
+- spec and contract files;
+- repo metadata (`.gitignore`, `.gitattributes`, `.editorconfig`, prettier config, `.npmrc`, `.nvmrc`/`.node-version`/`.python-version`, `CODEOWNERS`, `LICENSE`, `.github/workflows/*.yml`, issue/PR templates, `dependabot.yml`). Other config such as `tsconfig.json` or `eslint.config.*` changes behavior, so it counts as code;
+- lockfiles and `requirements*.txt`;
+- `package.json` where only dependency keys changed (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`, `packageManager`, `overrides`, `resolutions`, `pnpm`).
+
+Labels, branch names (including `dependabot/*`), and authors never exempt a PR, so a dependabot lockfile/manifest bump passes by path while a dependabot PR touching code does not. The rule lives in `governance.yml` (policy section 8) and is covered by `tests/test_policy.py`.
+
+**Format and where it came from.** Specs follow Kiro's layout: `requirements.md` (Spec ID, issue, user stories, numbered EARS criteria), optional `design.md` and `tasks.md`; see `templates/spec/`. The ID-to-test traceability copies what Ky already does:
+
+- LamportLogic `packages/auth/src/requirement-to-test.ts`: the `AUTH-REQ-001` → test-case matrix;
+- ZeroAPI `docs/specs/EMAIL_OUTCOME_REQUIREMENTS.md`: `EO-1..EO-4` with a tests section;
+- park-city-studios `REQUIREMENTS_TRACEABILITY.md`;
+- human-rebuild-bootcamp `GOLDEN_SPEC.md`: `[R-SPEC-F1]` requirement IDs plus acceptance oracles;
+- ky-cloud-control-plane's Kiro-first spec gate: Kiro drafts requirements, Ky approves the exact sentences.
+
 ### Inputs
 
-`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
+`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `spec-dirs` ("specs,.kiro/specs"), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
 
 ## Opt a repo in
 

@@ -16,3 +16,5 @@ jobs:
     uses: ./.github/workflows/governance.yml
     with:
       require-tests: false
+      # Behavioral tests for the policy gate (specs/ai-governance-gate/requirements.md).
+      extra-command: python3 -m unittest discover -s tests -v

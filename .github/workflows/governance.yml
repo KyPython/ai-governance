@@ -16,6 +16,9 @@ name: AI Governance (reusable)
 #                  (PR template, .systems-thinking/contracts/)
 #                - workflow security baseline: explicit permissions + SHA-pinned
 #                  actions (scripts/validate-security-baseline.js, surface W)
+#   spec gate    - code PRs need an issue, a spec folder with numbered EARS acceptance
+#                  criteria, and changed tests that cite those IDs (Kiro specs layout;
+#                  LamportLogic requirement->test matrix; bootcamp GOLDEN_SPEC IDs)
 #   secret-scan  - gitleaks over the full PR commit range, pinned + checksummed
 #                  (.github/workflows/secret-scan.yml)
 #   verdict      - single fail-closed aggregate to mark as the required check
@@ -55,8 +58,14 @@ on:
         description: Optional repo-specific governance command run after tests (e.g. "pnpm validate:all").
         type: string
         default: ""
+      spec-dirs:
+        description: Comma-separated spec roots for the spec gate (each holds <slug>/requirements.md).
+        type: string
+        default: "specs,.kiro/specs"
       require-issue-reference:
-        description: Fail (instead of warn) when the PR body does not reference an issue.
+        description: >
+          Fail (instead of warn) when a PR that changes no code lacks an issue reference.
+          PRs that change code always need one (spec gate).
         type: boolean
         default: false
       enforce-conventional-title:
@@ -222,6 +231,7 @@ jobs:
           ENFORCE_TITLE: ${{ inputs.enforce-conventional-title }}
           STC_MODE: ${{ inputs.systems-thinking-contract }}
           BASELINE_MODE: ${{ inputs.workflow-baseline }}
+          SPEC_DIRS: ${{ inputs.spec-dirs }}
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -314,11 +324,10 @@ jobs:
               else:
                   warn(f"PR title `{title}` is not a Conventional Commit.")
 
-              # 5. Issue reference (PR template: "Closes #").
-              if re.search(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|relates? to|refs?)\b:?\s+([\w.-]+/[\w.-]+)?#\d+", body) or re.search(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+", body):
+              # 5. Issue reference (PR template: "Closes #"). Mandatory for code PRs (spec gate, 8).
+              has_issue = bool(re.search(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|relates? to|refs?)\b:?\s+([\w.-]+/[\w.-]+)?#\d+", body) or re.search(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+", body))
+              if has_issue:
                   ok("PR references an issue")
-              elif head_ref.startswith("dependabot/"):
-                  ok("dependabot PR - issue reference not required")
               elif os.environ.get("REQUIRE_ISSUE") == "true":
                   err("PR body does not reference an issue (add `Closes #<n>` or `Relates to #<n>`).")
               else:
@@ -355,6 +364,92 @@ jobs:
                       ok("SYSTEMS_THINKING_CONTRACT covers all structural paths")
           elif structural:
               warn("Structural paths changed (no contract enforced in this repo): " + ", ".join(structural))
+
+          # 8. SPEC GATE (no spec, no code). Format: Kiro-style spec folder
+          #    <spec-dir>/<slug>/requirements.md with numbered EARS acceptance criteria
+          #    ("GOV-1.1 WHEN ... THEN the system SHALL ..."), traced from tests by ID
+          #    (LamportLogic AUTH-REQ-001 matrix / EO-1 trace; bootcamp [R-SPEC-F1] IDs).
+          #    Exemption is by explicit path rule only - never by label, branch name or author.
+          if is_pr:
+              spec_dirs = [d.strip().strip("/") for d in (os.environ.get("SPEC_DIRS") or "specs,.kiro/specs").split(",") if d.strip()]
+              DOC_RE = re.compile(r"\.(md|mdx|rst|txt|adoc|png|jpe?g|gif|svg|webp|ico|pdf)$|(^|/)(docs?/|LICENSE|NOTICE|CHANGELOG)|(^|/)\.cursorrules$|^\.cursor/rules/", re.I)
+              META_RE = re.compile(r"^(" + "|".join(re.escape(d) + "/" for d in spec_dirs) + r"|\.systems-thinking/|\.ai-governance/contracts/)")
+              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
+              LOCK_RE = re.compile(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|go\.sum)$")
+              DEP_KEYS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "packageManager", "overrides", "resolutions", "pnpm"}
+              base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+
+              def dependency_only_manifest(f):
+                  # package.json counts as non-code only when nothing but dependency keys changed.
+                  if not re.search(r"(^|/)package\.json$", f) or not base or not Path(f).is_file():
+                      return False
+                  old = subprocess.run(["git", "show", f"{base}:{f}"], capture_output=True, text=True)
+                  if old.returncode != 0:
+                      return False
+                  try:
+                      a, b = json.loads(old.stdout), json.loads(Path(f).read_text())
+                  except Exception:
+                      return False
+                  strip = lambda d: {k: v for k, v in d.items() if k not in DEP_KEYS}
+                  return strip(a) == strip(b)
+
+              def exempt(f):
+                  return bool(DOC_RE.search(f) or META_RE.search(f) or CONFIG_RE.search(f) or LOCK_RE.search(f)
+                              or re.search(r"(^|/)requirements[\w.-]*\.txt$", f) or dependency_only_manifest(f))
+
+              code = [f for f in changed if not exempt(f)]
+              if not code:
+                  ok("spec gate: no code paths changed (exempt by path rule)")
+              else:
+                  print("Code paths requiring a spec: " + ", ".join(code))
+                  if not has_issue:
+                      err("Spec gate: this PR changes code, so it must link an issue (`Closes #<n>` / `Relates to #<n>`).")
+                  # Spec folders: changed in the PR, or referenced in the body as `Spec: specs/<slug>`.
+                  folders = set()
+                  for f in changed:
+                      for d in spec_dirs:
+                          if f.startswith(d + "/") and f.count("/") > d.count("/") + 1:
+                              folders.add(d + "/" + f[len(d) + 1:].split("/")[0])
+                  for m in re.finditer(r"(?im)\bspecs?\s*:\s*`?([\w./-]+)`?", body):
+                      folders.add(m.group(1).strip("/"))
+                  crit_re = re.compile(r"^\s*(?:[-*]|\d+[.)])?\s*\**`?\[?([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+\.\d+)\]?`?\**[:.)]?\s.*\bSHALL\b", re.M)
+                  ids, valid = set(), []
+                  for folder in sorted(folders):
+                      req = Path(folder) / "requirements.md"
+                      if not any(folder == d or folder.startswith(d + "/") for d in spec_dirs):
+                          warn(f"Spec reference `{folder}` is outside the configured spec dirs ({', '.join(spec_dirs)}); ignored.")
+                          continue
+                      if not req.is_file():
+                          err(f"Spec gate: `{req}` does not exist. Each spec folder needs requirements.md (see KyPython/ai-governance/templates/spec/).")
+                          continue
+                      found = set(crit_re.findall(req.read_text(encoding="utf-8", errors="replace")))
+                      if not found:
+                          err(f"Spec gate: `{req}` has no numbered EARS acceptance criteria (e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`).")
+                          continue
+                      ids |= found; valid.append(str(req))
+                  if not folders:
+                      err("Spec gate: code changed but no spec was added or referenced. Add `specs/<slug>/requirements.md` (or `.kiro/specs/<slug>/`) or put `Spec: specs/<slug>` in the PR body.")
+                  elif valid:
+                      ok(f"spec gate: {len(ids)} acceptance criteria in {', '.join(valid)}")
+                  # Traceability: a changed test must cite a criterion ID (or its requirement ID).
+                  TEST_RE = re.compile(r"(^|/)(tests?|__tests__)/|\.(test|spec)\.[cm]?[jt]sx?$|(^|/)test_[^/]*\.py$|_test\.(py|go|rb)$|Tests?\.(gd|cs|java|kt|swift)$|\.bats$")
+                  tests = [f for f in changed if TEST_RE.search(f) and not META_RE.search(f) and Path(f).is_file()]
+                  if ids:
+                      all_ids = ids | {i.rsplit(".", 1)[0] for i in ids}
+                      # `GOV-1.1` may also be written `GOV_1_1` (test identifiers cannot contain - or .).
+                      pats = {i: re.compile(r"(?<![A-Za-z0-9-])" + re.escape(i).replace(r"\-", "[-_]").replace(r"\.", "[._]") + r"(?![A-Za-z0-9]|[._-]\d)") for i in all_ids}
+                      traced = {}
+                      for t in tests:
+                          text = t + "\n" + Path(t).read_text(encoding="utf-8", errors="replace")
+                          hits = {i for i, rx in pats.items() if rx.search(text)}
+                          if hits:
+                              traced[t] = sorted(hits)
+                      if traced:
+                          ok("traceability: " + "; ".join(f"{t} -> {', '.join(h)}" for t, h in traced.items()))
+                      elif tests:
+                          err("Traceability: changed tests (" + ", ".join(tests) + ") do not cite any requirement ID from the spec. Name or comment each test with the ID it verifies (e.g. `GOV-1.1`).")
+                      else:
+                          err("Traceability: code changed but no test was added or changed. Add or update a test that cites the acceptance criterion IDs it verifies.")
 
           # 7. Governance files touched -> human code-owner review is mandatory.
           gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
