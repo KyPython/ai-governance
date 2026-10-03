@@ -2,6 +2,8 @@ name: AI Governance self-test
 
 on:
   pull_request:
+    # `edited` re-runs the gate when the PR title/body (issue reference) changes.
+    types: [opened, synchronize, reopened, edited]
     branches: [main]
   push:
     branches: [main]
