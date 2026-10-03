@@ -6,7 +6,7 @@ Provenance: Grok Bot (executor agent) drafted these sentences from Ky's 2026-10-
 
 ## Introduction
 
-Every agent has a fixed role. Kiro writes specs; coders implement specs that already exist on `main`; Ky approves and merges. The `policy` job of the shared `ai-governance / verdict` gate enforces this in every repo.
+Every agent has a fixed role. Kiro writes specs in spec-only PRs that merge first. Coders implement specs that already exist on `main`; Kiro's builders count as coders too. Each task in `tasks.md` goes to one coder in its own PR, reviewed by a different agent. Ky approves and merges. The `policy` job of the shared `ai-governance / verdict` gate enforces this in every repo.
 
 The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md`, EARS acceptance criteria). The traceability follows the requirement-ID → test pattern Ky already uses:
 
@@ -51,7 +51,23 @@ The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md
 3. GATE-3.3 WHEN a pull request in KyPython/ai-governance changes `roles.yml` THEN the system SHALL fail the policy job unless the PR opener and every commit identity match the owner in `roles.yml`.
 4. GATE-3.4 IF `roles.yml` cannot be read or lacks an owner, spec paths, or spec-author identities THEN the system SHALL fail the policy job.
 5. GATE-3.5 The system SHALL read the role map and spec paths only from `roles.yml` on KyPython/ai-governance `main`, and SHALL NOT accept caller inputs that change roles or spec paths.
+6. GATE-3.6 WHEN `kiro-agent[bot]` opens or commits to a code PR THEN the system SHALL apply the same code rules as for every other coder, including GATE-1.7.
 
-#### Known limit
+### Requirement 4: Verdict scorecard (GATE-4)
+
+**User Story:** As Ky, I want every verdict to publish a short machine-readable summary, so that I can see what each task PR covered, check reviewers' claims, and compare the occasional head-to-head build.
+
+#### Acceptance Criteria
+
+1. GATE-4.1 WHEN the gate runs THEN the verdict job SHALL publish a JSON scorecard (schema `ai-governance-summary/v1`) in the job summary, as the `ai-governance-summary` artifact, and as the reusable workflow's `summary` output.
+2. GATE-4.2 The scorecard SHALL include:
+   - tests passed, failed, and total;
+   - the requirement IDs cited by the PR's changed tests and the referenced spec;
+   - the number of failed checks and of policy errors;
+   - the number of changed lines (excluding lockfiles) and changed files.
+3. GATE-4.3 WHEN the test output comes from Jest, Vitest, pytest, unittest, node:test, or Mocha THEN the system SHALL parse passed, failed, and total counts from it. For any other runner, the system SHALL report them as null.
+4. GATE-4.4 The system SHALL NOT let the scorecard change the verdict's pass/fail outcome.
+
+#### Known limit (GATE-3)
 
 Git author and committer fields are self-declared, and agents that push with Ky's token appear as KyPython (the owner override). GATE-3 therefore proves only the identities that commits and PRs declare. It cannot tell an agent using Ky's token from Ky himself.

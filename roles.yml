@@ -17,13 +17,14 @@ spec_paths:
 
 roles:
   spec-author:
-    description: Authors specs and requirements (requirements.md, design.md, tasks.md). Only Kiro, with Ky as owner override.
+    description: Authors specs and requirements (requirements.md, design.md, tasks.md) in spec-only PRs merged before code. Only Kiro, with Ky as owner override.
     identities:
       - kiro-agent[bot]
       - KyPython
   coder:
-    description: Implements existing specs only. Never writes or edits specs.
+    description: Implements existing specs only, one task per PR, reviewed by a different agent. Never writes or edits specs in a code PR.
     identities:
+      - kiro-agent[bot]   # Kiro's builders code too, but its code PRs may not touch specs
       - chatgpt-codex-connector[bot]
       - codex
       - cursor[bot]
