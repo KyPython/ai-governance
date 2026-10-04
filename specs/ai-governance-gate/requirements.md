@@ -6,7 +6,9 @@ Provenance: Grok Bot (executor agent) drafted these sentences from Ky's 2026-10-
 
 ## Introduction
 
-Every agent has a fixed role. Kiro writes specs in spec-only PRs that merge first. Coders implement specs that already exist on `main`; Kiro's builders count as coders too. Each task in `tasks.md` goes to one coder in its own PR, reviewed by a different agent. Ky approves and merges. The `policy` job of the shared `ai-governance / verdict` gate enforces this in every repo.
+Every agent has a fixed role. Kiro writes specs in spec-only PRs that merge first. Coders implement specs that already exist on `main`; Kiro's builders count as coders too. Each task in `tasks.md` goes to one coder in its own PR. The `policy` job of the shared `ai-governance / verdict` gate enforces only what GATE-1 to GATE-5 check: the spec gate (GATE-1), gate re-runs on metadata edits (GATE-2), the role gate (GATE-3), the verdict scorecard (GATE-4), and strict-repo parity (GATE-5). It does not check reviewers or approvals.
+
+Cross-agent review and Ky's merge are human rules, not gate-enforced: each task PR is reviewed by a different agent, and only Ky merges. Those rules are backed by branch protection's required conversation resolution and the "agents never merge" rule in `AGENTS.md`, not by the `policy` job.
 
 The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md`, EARS acceptance criteria). The traceability follows the requirement-ID → test pattern Ky already uses:
 
@@ -49,9 +51,10 @@ The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md
 1. GATE-3.1 WHEN a pull request adds, changes, or deletes a file under a spec path THEN the system SHALL fail the policy job unless the PR opener and the author and committer of every commit in the PR match an identity of the `spec-author` role in `roles.yml`.
 2. GATE-3.2 WHEN a commit's committer is GitHub's web-flow identity (`noreply@github.com`) THEN the system SHALL check only that commit's author.
 3. GATE-3.3 WHEN a pull request in KyPython/ai-governance changes `roles.yml` THEN the system SHALL fail the policy job unless the PR opener and every commit identity match the owner in `roles.yml`.
-4. GATE-3.4 IF `roles.yml` cannot be read or lacks an owner, spec paths, or spec-author identities THEN the system SHALL fail the policy job.
+4. GATE-3.4 IF `roles.yml` cannot be read or lacks an owner, spec paths, spec-author identities, or a `coder` list THEN the system SHALL fail the policy job.
 5. GATE-3.5 The system SHALL read the role map and spec paths only from `roles.yml` on KyPython/ai-governance `main`, and SHALL NOT accept caller inputs that change roles or spec paths.
 6. GATE-3.6 WHEN `kiro-agent[bot]` opens or commits to a code PR THEN the system SHALL apply the same code rules as for every other coder, including GATE-1.7.
+7. GATE-3.7 WHEN a pull request changes a code path THEN the system SHALL fail the policy job unless the PR opener and the author and committer of every commit in the PR match an identity of the `coder` role in `roles.yml` or the `owner` (with the web-flow committer exception of GATE-3.2 applied, so a `noreply@github.com` committer means only that commit's author is checked). This is the code-path complement to GATE-3.1.
 
 ### Requirement 4: Verdict scorecard (GATE-4)
 
@@ -77,7 +80,7 @@ The spec format follows Kiro's layout (`requirements.md`, `design.md`, `tasks.md
 1. GATE-5.1 WHEN a pull request adds a line using `jwt.sign`, `jwt.verify` or `jsonwebtoken` in a JavaScript/TypeScript source file outside `packages/auth/`, `packages/security/` or `packages/database/` THEN the system SHALL fail the policy job.
 2. GATE-5.2 WHEN a pull request adds a line containing `new PrismaClient` in such a source file THEN the system SHALL fail the policy job.
 3. GATE-5.3 WHEN a pull request adds a destructive command (force push, `git reset --hard`, destructive `git clean`, database reset or drop, `terraform destroy`, `rm -rf /`) to a script, workflow, Dockerfile, Makefile, `.husky/` hook or `package.json` THEN the system SHALL fail the policy job.
-4. GATE-5.4 WHEN a pull request adds or changes a deploy, release or publish workflow that runs on pull_request events, uses `workflow_run` without checking `conclusion == 'success'`, or deploys on push without a branch filter THEN the system SHALL fail the policy job.
+4. GATE-5.4 WHEN a pull request adds or changes a deploy, release or publish workflow THEN the system SHALL fail the policy job if any of the following holds: it runs on `pull_request` events; it uses `workflow_run` without checking `conclusion == 'success'`; it uses `workflow_run` without also verifying that the upstream run was a push event (`github.event.workflow_run.event == 'push'`) on the default branch of the same repository (`github.event.workflow_run.head_repository.full_name == github.repository`); or it deploys on `push` without a branch filter that names the default branch (or an explicitly listed release branch that Ky has allowed).
 5. GATE-5.5 WHEN a pull request adds or changes a Dockerfile whose base image is unversioned or `:latest`, or whose final stage runs as root THEN the system SHALL fail the policy job.
 6. GATE-5.6 WHEN the gate runs THEN the system SHALL run a `security` job that the verdict requires. The job SHALL run hash-pinned zizmor at medium severity on in-scope workflows and shellcheck at error severity on changed shell scripts.
 7. GATE-5.7 WHEN a pull request changes a dependency manifest or lockfile AND the head introduces a known vulnerability (OSV) absent from the base THEN the system SHALL fail the security job.
