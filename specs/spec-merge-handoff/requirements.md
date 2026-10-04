@@ -26,6 +26,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 2. HANDOFF-1.2 WHEN the central workflow is triggered on its schedule (`on: schedule` cron) or by `on: workflow_dispatch` THEN the system SHALL scan the opted-in repos for spec-only merges and task lists and perform the handoff.
 3. HANDOFF-1.3 WHEN scanning an opted-in repo THEN the system SHALL evaluate the "commit changes only `specs/**`" condition centrally by inspecting the changed paths of each detected merge to that repo's `main`, rather than relying on a per-repo push-triggered caller.
 4. HANDOFF-1.4 The central workflow SHALL hold the only copy of `CODEX_TRIGGER_PAT`, and opted-in repos SHALL NOT be required to store any secret of their own for the handoff.
+5. HANDOFF-1.5 The central workflow SHALL run serialized through a single GitHub Actions `concurrency` group for the handoff with `cancel-in-progress: false`, so that an overlapping scheduled run and `workflow_dispatch` run cannot both perform the check-then-create steps at the same time and so cannot create a duplicate issue or post a duplicate `@codex` comment (protecting HANDOFF-6.3 and HANDOFF-7.3).
 
 ### Requirement 2: Opt-in discovery and allowlist (HANDOFF-2)
 
@@ -56,6 +57,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 1. HANDOFF-4.1 WHEN a spec-only merge is detected for a spec at `specs/<slug>` THEN the system SHALL open exactly one issue per task listed in `specs/<slug>/tasks.md`.
 2. HANDOFF-4.2 WHEN the system opens a task issue THEN the issue body SHALL contain the line `Spec: specs/<slug>`, the task text, and the task's requirement IDs.
 3. HANDOFF-4.3 WHEN the system opens a task issue THEN the system SHALL label it with the task's assigned coder, or with `codex` when the task names no coder.
+4. HANDOFF-4.4 WHEN the system is about to create a task issue THEN it SHALL first ensure the coder label (for example `codex`) exists in the target repo, creating the label if it is missing, and after creating the issue it SHALL verify that the created issue actually carries that label; IF ensuring the label fails OR the post-create verification shows the label is absent THEN the system SHALL fail that task clearly, so that a silently dropped label (GitHub drops labels that do not exist in the target repo or that the token cannot set) cannot leave an issue with no `@codex` comment per HANDOFF-7.1 and HANDOFF-7.2.
 
 ### Requirement 5: tasks.md parsing and coder-label default (HANDOFF-5)
 
@@ -75,7 +77,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 #### Acceptance Criteria
 
 1. HANDOFF-6.1 WHEN the system opens a task issue THEN the issue body SHALL include a stable marker `<!-- spec-task: <slug>#<task-id> -->`.
-2. HANDOFF-6.2 WHEN the system considers creating a task issue THEN it SHALL first search the target repo's existing issues, spanning both open and closed issues, for that task's marker and SHALL NOT create a new issue when the marker already exists, so that a later scheduled scan after a task issue has been closed does not create a duplicate.
+2. HANDOFF-6.2 WHEN the system considers creating a task issue THEN it SHALL first list the target repo's existing issues through the GitHub Issues REST API list endpoint with `state=all` (both open and closed issues, for example `GET /repos/{owner}/{repo}/issues?state=all`), explicitly NOT the Search API, and SHALL NOT create a new issue when that task's marker already exists among them, so that a later scheduled scan after a task issue has been closed does not create a duplicate; listing is used rather than the Search API because Search indexing lags and an issue created moments earlier can be missed.
 3. HANDOFF-6.3 WHEN the handoff runs again for the same spec and commit (a re-run, a later scheduled scan, or a manual dispatch) THEN the system SHALL create zero additional issues.
 
 ### Requirement 7: At-most-once @codex comment (HANDOFF-7)
@@ -97,7 +99,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 1. HANDOFF-8.1 The system SHALL read `CODEX_TRIGGER_PAT` only from the central secret in KyPython/ai-governance, and opted-in repos SHALL hold no copy of it.
 2. HANDOFF-8.2 The system SHALL NOT echo, log, or write `CODEX_TRIGGER_PAT` to step logs, outputs, artifacts, or the job summary.
 3. HANDOFF-8.3 The system SHALL NOT expose `CODEX_TRIGGER_PAT` to `pull_request` runs triggered from forks.
-4. HANDOFF-8.4 WHEN the system creates task issues THEN it SHALL use the least-privileged token that works (a token with `issues: write` for the target repo), reserving `CODEX_TRIGGER_PAT` for the `@codex` comment that must appear as KyPython to trigger Codex.
+4. HANDOFF-8.4 WHEN the system creates task issues in an opted-in repo THEN it SHALL use a dedicated cross-repo credential, because the central workflow's `GITHUB_TOKEN` is scoped only to KyPython/ai-governance and cannot create issues in other repos. That cross-repo credential SHALL be one of: the same `CODEX_TRIGGER_PAT`, a second dedicated PAT, or a GitHub App installation token, and it SHALL be granted the minimum permissions needed to create and label issues and read the repo for discovery and marker listing (Issues: read and write, Contents: read, Metadata: read; explicitly NO Contents: write). The `@codex` comment path SHALL remain reserved to `CODEX_TRIGGER_PAT` so that comment appears as KyPython to trigger Codex.
 5. HANDOFF-8.5 IF `CODEX_TRIGGER_PAT` is missing THEN the system SHALL fail clearly and open no partial set of issues.
 
 ### Requirement 9: Workflow hygiene (HANDOFF-9)
@@ -120,7 +122,7 @@ Out of scope for this PR: writing any workflow YAML, Python, or tests; editing `
 1. HANDOFF-10.1 The system SHALL NOT create, edit, or delete any file under `specs/` in any repo.
 2. HANDOFF-10.2 The system SHALL NOT push commits to any repo.
 3. HANDOFF-10.3 The system SHALL NOT merge or approve any pull request.
-4. HANDOFF-10.4 The system SHALL have no write path to repository contents or merges, and this SHALL be provable by an automated test or a static check over the workflow's permissions and operations.
+4. HANDOFF-10.4 The system SHALL have no write path to repository contents or merges, and this SHALL be provable by an automated test or a static check over the workflow's permissions and operations. In particular, the cross-repo issue-creation credential named in HANDOFF-8.4 SHALL carry Issues write only and NO Contents: write, so that the no-write guarantee is provable from the credential's permissions as well as from the workflow's `permissions` block and API surface.
 
 ### Requirement 11: Automated tests citing requirement IDs (HANDOFF-11)
 
