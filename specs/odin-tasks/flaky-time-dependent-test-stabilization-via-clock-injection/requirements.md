@@ -20,3 +20,5 @@ Prepare a synthetic Python project with a deliberately time- and timezone-depend
 - AC2: At least one provided reproduction path demonstrates differing behavior or a failure under a changed time/TZ condition.
 - AC3: No final injected-clock implementation or deterministic boundary test suite exists.
 - AC4: Setup and reproduction commands are short enough for a 15–45:59 recording.
+## Recording envelope
+- Each provided reproduction/repeat command should complete within 60 seconds on the prepared local starter environment so multiple timezone runs can be demonstrated inside a 15:00–45:59 recording.
