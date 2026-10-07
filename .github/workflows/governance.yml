@@ -84,6 +84,10 @@ permissions:
   contents: read
 
 env:
+  ZIZMOR_VERSION: "1.30.1"
+  ZIZMOR_SHA256: "eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e"
+  OSV_VERSION: "2.6.0"
+  OSV_SHA256: "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 
@@ -482,7 +486,7 @@ jobs:
           if is_pr:
               DOC_RE = re.compile(r"\.(md|mdx|rst|txt|adoc|png|jpe?g|gif|svg|webp|ico|pdf)$|(^|/)(docs?/|LICENSE|NOTICE|CHANGELOG)|(^|/)\.cursorrules$|^\.cursor/rules/", re.I)
               META_RE = re.compile(r"^(" + "|".join(re.escape(d) + "/" for d in spec_dirs) + r"|\.systems-thinking/|\.ai-governance/contracts/)")
-              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
+              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS|purpose-inventory\.json)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
               LOCK_RE = re.compile(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|go\.sum)$")
               DEP_KEYS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "packageManager", "overrides", "resolutions", "pnpm"}
               base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
@@ -612,6 +616,94 @@ jobs:
               if coders:
                   print("Coder identities in this PR: " + "; ".join(coders))
 
+          # 10-13. STRICT-REPO PARITY (LamportLogic validate-constitution.sh, .claude/hooks/pre-tool-use.mjs,
+          #        deploy-all.yml workflow_run gating, validate-container-hardening.js). Added lines only, so legacy
+          #        code does not fail unrelated PRs.
+          if is_pr and base:
+              head = os.environ.get("PR_HEAD_SHA", "")
+              def added_lines(paths):
+                  out = []
+                  if not paths:
+                      return out
+                  cur = None
+                  for l in git("diff", "-U0", "--no-color", f"{base}..{head}", "--", *paths).splitlines():
+                      if l.startswith("+++ "):
+                          cur = l[6:] if l.startswith("+++ b/") else None
+                      elif l.startswith("+") and not l.startswith("+++") and cur:
+                          out.append((cur, l[1:]))
+                  return out
+              present = [f for f in changed if Path(f).is_file()]
+              # 10. Architecture guardrails: no hand-rolled JWT auth, no direct PrismaClient (use the shared packages).
+              SRC_RE = re.compile(r"\.(m?[jt]sx?|cjs|cts|mts)$")
+              GUARD_ALLOW = re.compile(r"(^|/)(packages/(auth|security|database)/|__mocks__/|node_modules/)")
+              src = [f for f in present if SRC_RE.search(f) and not GUARD_ALLOW.search(f)]
+              guard = [(f, l) for f, l in added_lines(src) if not l.lstrip().startswith(("//", "*", "/*"))]
+              auth_hits = [f for f, l in guard if re.search(r"jwt\.sign|jwt\.verify|jsonwebtoken", l)]
+              db_hits = [f for f, l in guard if re.search(r"new\s+PrismaClient\b", l)]
+              if auth_hits:
+                  err("Guardrail: hand-rolled JWT auth added (jwt.sign / jwt.verify / jsonwebtoken) in " + ", ".join(sorted(set(auth_hits))) + ". Use the shared auth package.")
+              if db_hits:
+                  err("Guardrail: direct `new PrismaClient` added in " + ", ".join(sorted(set(db_hits))) + ". Import the shared database client instead.")
+              if not auth_hits and not db_hits:
+                  ok("guardrails: no hand-rolled auth or direct database client added")
+              # 11. Destructive commands written into scripts, workflows, manifests.
+              SCRIPT_RE = re.compile(r"(\.(sh|bash|zsh|ps1|mk)$|(^|/)(Makefile|Dockerfile[^/]*|package\.json|justfile)$|^\.github/workflows/[^/]+\.ya?ml$|^\.husky/)")
+              DESTRUCTIVE = [
+                  (r"\bgit\s+push\b[^\n;]*(?:--force(?:-with-lease)?|\s-f)\b", "force push"),
+                  (r"\bgit\s+reset\s+--hard\b", "hard reset"),
+                  (r"\bgit\s+clean\s+-[^\s]*[fdx]", "destructive git clean"),
+                  (r"\b(?:prisma\s+migrate\s+reset|supabase\s+db\s+reset)\b", "database reset"),
+                  (r"\bdrop\s+database\b", "database drop"),
+                  (r"\bterraform\s+destroy\b", "infrastructure destroy"),
+                  (r"\brm\s+-rf\s+/(?:\s|$|\*)", "root filesystem delete"),
+              ]
+              dhits = sorted({f"{f} ({label})" for f, l in added_lines([f for f in present if SCRIPT_RE.search(f)])
+                              for rx, label in DESTRUCTIVE if re.search(rx, l, re.I) and not l.lstrip().startswith("#")})
+              if dhits:
+                  err("Destructive command added to automation: " + "; ".join(dhits) + ". These need explicit human authorization, not a script.")
+              else:
+                  ok("no destructive commands added to scripts/workflows")
+              # 12. Deploy after CI: deploy/release/publish workflows never run on PR events, and workflow_run deploys
+              #     require the upstream run to have succeeded.
+              for f in [f for f in present if re.match(r"^\.github/workflows/[^/]+\.ya?ml$", f)]:
+                  text = Path(f).read_text(encoding="utf-8", errors="replace")
+                  head_name = (re.search(r"(?m)^name:\s*(.+)$", text) or [None, ""])[1]
+                  if not re.search(r"deploy|release|publish", f + " " + head_name, re.I):
+                      continue
+                  on_block = re.search(r"(?ms)^(?:on|\"on\"|'on'):(.*?)(?=^\S)", text + "\nx")
+                  triggers = set(re.findall(r"(?m)^\s{2}([a-z_]+):", on_block.group(1))) if on_block else set()
+                  inline = re.search(r"(?m)^on:\s*\[?([^\n\]]+)\]?\s*$", text)
+                  if inline:
+                      triggers |= {t.strip() for t in inline.group(1).split(",")}
+                  if triggers & {"pull_request", "pull_request_target"}:
+                      err(f"Deploy after CI: `{f}` deploys on pull_request events. Deploy only from the default branch after CI (workflow_run on success, or push to main).")
+                  elif "workflow_run" in triggers and not re.search(r"conclusion\s*==\s*'success'", text):
+                      err(f"Deploy after CI: `{f}` uses workflow_run but never checks `github.event.workflow_run.conclusion == 'success'`.")
+                  elif "push" in triggers and not re.search(r"(?ms)push:\s*\n\s+branches:", text):
+                      err(f"Deploy after CI: `{f}` deploys on push to any branch. Restrict `push.branches` to the default branch.")
+                  else:
+                      ok(f"deploy after CI: `{f}` is gated")
+                      if "workflow_dispatch" in triggers:
+                          warn(f"`{f}` can be dispatched by hand; make sure the dispatch path runs the same CI gate first.")
+              # 13. Container hardening for added/changed Dockerfiles.
+              for f in [f for f in present if re.search(r"(^|/)Dockerfile[^/]*$", f)]:
+                  lines = [l.strip() for l in Path(f).read_text(encoding="utf-8", errors="replace").splitlines()]
+                  froms = [l.split()[1] for l in lines if re.match(r"(?i)^FROM\s+\S", l)]
+                  bad = [img for img in froms if img.lower() != "scratch" and "@sha256:" not in img and (":" not in img.split("/")[-1] or img.endswith(":latest"))]
+                  if bad:
+                      err(f"Container: `{f}` uses an unversioned or :latest base image ({', '.join(bad)}). Pin an exact tag (ideally @sha256 digest).")
+                  last_from = max((i for i, l in enumerate(lines) if re.match(r"(?i)^FROM\s", l)), default=-1)
+                  users = [l.split(None, 1)[1].strip() for l in lines[last_from + 1:] if re.match(r"(?i)^USER\s+\S", l)]
+                  if not users or users[-1].split(":")[0] in ("root", "0"):
+                      err(f"Container: `{f}` runs as root in its final stage. Add a non-root `USER`.")
+                  if not bad and users and users[-1].split(":")[0] not in ("root", "0"):
+                      ok(f"container: `{f}` pins its base image and runs as non-root")
+              # PR template / dependabot (LamportLogic .github/PULL_REQUEST_TEMPLATE.md, dependabot.yml).
+              if not any(Path(x).is_file() for x in (".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md", "PULL_REQUEST_TEMPLATE.md", "docs/PULL_REQUEST_TEMPLATE.md")):
+                  warn("No PR template (.github/PULL_REQUEST_TEMPLATE.md). LamportLogic's template asks for what changed, why, risk, and tests.")
+              if not Path(".github/dependabot.yml").is_file() and not Path(".github/dependabot.yaml").is_file():
+                  warn("No .github/dependabot.yml: dependency and action updates are not automated.")
+
           # 7. Governance files touched -> human code-owner review is mandatory.
           gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
           if gov:
@@ -645,6 +737,107 @@ jobs:
                   o.write(f"requirement_ids={','.join(sorted(covered_ids))}\nspec={','.join(spec_refs)}\npolicy_errors={len(errors)}\n"
                           f"lines_added={added}\nlines_deleted={deleted}\nfiles_changed={files}\n")
           sys.exit(1 if errors else 0)
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Changed files
+        id: diff
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          BASELINE_MODE: ${{ inputs.workflow-baseline }}
+        run: |
+          set -euo pipefail
+          base=""; head="${PUSH_AFTER}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            head="$PR_HEAD_SHA"; base="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA" || true)"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            base="$PUSH_BEFORE"
+          fi
+          if [ -n "$base" ]; then
+            git diff --name-only --diff-filter=ACMR "$base" "$head" > "$RUNNER_TEMP/changed.txt"
+          else
+            git ls-files > "$RUNNER_TEMP/changed.txt"
+          fi
+          if [ "$BASELINE_MODE" = "all" ]; then
+            git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' > "$RUNNER_TEMP/workflows.txt"
+          else
+            grep -E '^\.github/workflows/[^/]+\.ya?ml$' "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/workflows.txt" || true
+          fi
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+          echo "### security" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Workflow static analysis (zizmor, pinned + hash verified)
+        if: inputs.workflow-baseline != 'off'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(while read -r f; do [ -f "$f" ] && echo "$f"; done < "$RUNNER_TEMP/workflows.txt")
+          if [ "${#files[@]}" -eq 0 ]; then echo "- zizmor: no workflows in scope" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          printf 'zizmor==%s --hash=sha256:%s\n' "$ZIZMOR_VERSION" "$ZIZMOR_SHA256" > "$RUNNER_TEMP/zizmor-req.txt"
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/bin/pip" install --quiet --require-hashes --only-binary=:all: -r "$RUNNER_TEMP/zizmor-req.txt"
+          "$RUNNER_TEMP/zizmor/bin/zizmor" --offline --min-severity medium --format github "${files[@]}"
+          echo "- zizmor ${ZIZMOR_VERSION}: no medium/high findings in ${#files[@]} workflow(s)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Shellcheck changed scripts
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(grep -E '\.(sh|bash)$' "$RUNNER_TEMP/changed.txt" | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+          if [ "${#files[@]}" -eq 0 ]; then echo "- shellcheck: no shell scripts changed" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          shellcheck --severity=error "${files[@]}"
+          echo "- shellcheck: ${#files[@]} script(s) clean at severity=error" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dependency review (osv-scanner, pinned + checksum verified)
+        env:
+          BASE: ${{ steps.diff.outputs.base }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ] || ! grep -qE '(^|/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|uv\.lock|Pipfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|Gemfile\.lock|composer\.lock)$' "$RUNNER_TEMP/changed.txt"; then
+            echo "- dependency review: no dependency manifests changed" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          curl -fsSL -o "$RUNNER_TEMP/osv-scanner" "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          scan() {
+            set +e; "$RUNNER_TEMP/osv-scanner" scan source -r --format json "$1" > "$2" 2>"$2.log"; rc=$?; set -e
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ] && [ "$rc" -ne 128 ]; then cat "$2.log" >&2; echo "::error::osv-scanner failed (exit $rc); the gate fails closed."; exit 1; fi
+            [ -s "$2" ] || echo '{"results":[]}' > "$2"
+          }
+          git worktree add -q --detach "$RUNNER_TEMP/base-tree" "$BASE"
+          scan . "$RUNNER_TEMP/osv-head.json"
+          scan "$RUNNER_TEMP/base-tree" "$RUNNER_TEMP/osv-base.json"
+          python3 - "$RUNNER_TEMP/osv-base.json" "$RUNNER_TEMP/osv-head.json" <<'PY'
+          import json, os, sys
+          def vulns(path):
+              out = {}
+              for r in json.load(open(path)).get("results", []):
+                  for p in r.get("packages", []):
+                      pkg = p.get("package", {})
+                      for v in p.get("vulnerabilities", []):
+                          out[(pkg.get("ecosystem"), pkg.get("name"), v["id"])] = pkg.get("version")
+              return out
+          base, head = vulns(sys.argv[1]), vulns(sys.argv[2])
+          new = sorted(set(head) - set(base))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write(f"- dependency review: {len(new)} newly introduced known vulnerabilities ({len(head)} total in head, {len(base)} in base)\n")
+          for eco, name, vid in new:
+              print(f"::error::Dependency review: {eco} {name}@{head[(eco, name, vid)]} introduces {vid} (https://osv.dev/{vid})")
+          sys.exit(1 if new else 0)
+          PY
 
   secret-scan:
     name: secret-scan
@@ -702,7 +895,7 @@ jobs:
   verdict:
     name: verdict
     if: always()
-    needs: [quality, policy, secret-scan]
+    needs: [quality, policy, security, secret-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -717,6 +910,7 @@ jobs:
           QUALITY: ${{ needs.quality.result }}
           POLICY: ${{ needs.policy.result }}
           SECRETS: ${{ needs.secret-scan.result }}
+          SECURITY: ${{ needs.security.result }}
           RUN_QUALITY: ${{ inputs.run-quality }}
           TESTS_PASSED: ${{ needs.quality.outputs.tests_passed }}
           TESTS_FAILED: ${{ needs.quality.outputs.tests_failed }}
@@ -741,7 +935,7 @@ jobs:
               v = e(k) or ""; return int(v) if v.isdigit() else None
           def lst(k):
               return [x for x in (e(k) or "").split(",") if x]
-          jobs = {"quality": e("QUALITY") or "unknown", "policy": e("POLICY") or "unknown", "secret-scan": e("SECRETS") or "unknown"}
+          jobs = {"quality": e("QUALITY") or "unknown", "policy": e("POLICY") or "unknown", "security": e("SECURITY") or "unknown", "secret-scan": e("SECRETS") or "unknown"}
           failed = [j for j, r in jobs.items() if r != "success" and not (j == "quality" and r == "skipped" and e("RUN_QUALITY") == "false")]
           added, deleted = num("LINES_ADDED"), num("LINES_DELETED")
           card = {
@@ -786,11 +980,12 @@ jobs:
           QUALITY: ${{ needs.quality.result }}
           POLICY: ${{ needs.policy.result }}
           SECRETS: ${{ needs.secret-scan.result }}
+          SECURITY: ${{ needs.security.result }}
           RUN_QUALITY: ${{ inputs.run-quality }}
         run: |
-          echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS}"
-          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
-          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
+          echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS}"
+          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
+          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "verdict=fail" >> "$GITHUB_OUTPUT"

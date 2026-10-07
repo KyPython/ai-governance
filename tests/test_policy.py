@@ -15,7 +15,7 @@ def step_script(after, until):
     return textwrap.dedent(tail.split("shell: python3 {0}\n        run: |\n", 1)[1].split(until, 1)[0])
 
 
-POLICY = step_script("- name: Governance policy checks", "\n  secret-scan:")
+POLICY = step_script("- name: Governance policy checks", "\n  security:")
 TEST_PARSER = step_script("- name: Parse test results (scorecard)", "\n  policy:")
 SCORECARD = step_script("- name: Scorecard (machine-readable summary)", "\n      - name: Upload scorecard artifact")
 TEMPLATE = (ROOT / "templates/ai-governance.yml").read_text()
@@ -152,6 +152,11 @@ class SpecGate(Base):
         code, out = r.policy(body="no issue", author=CURSOR, opener="cursor[bot]")
         self.assertEqual(code, 0, out); self.assertIn("exempt by path rule", out)
 
+    def test_GATE_1_5_file_purpose_inventory_is_repo_metadata(self):
+        r = self.repo(); r.write({"config/purpose-inventory.json": '{"paths": {"AGENTS.md": {"purpose": "rules"}}}\n', "AGENTS.md": "<!-- AI-GOVERNANCE:v1 -->\nx\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 0, out); self.assertIn("exempt by path rule", out)
+
     def test_GATE_1_5_dependency_only_package_json_is_exempt(self):
         r = self.repo(); r.write({"package.json": json.dumps({"name": "x", "scripts": {"test": "node --test"}, "dependencies": {"a": "1.1.0"}}, indent=2),
                                   "pnpm-lock.yaml": "lockfileVersion: '9.0'\n"})
@@ -278,7 +283,7 @@ class Scorecard(Base):
 
     def test_GATE_4_1_scorecard_json_output_and_job_summary(self):
         with tempfile.TemporaryDirectory() as d:
-            env = {"QUALITY": "success", "POLICY": "success", "SECRETS": "success", "RUN_QUALITY": "true",
+            env = {"QUALITY": "success", "POLICY": "success", "SECRETS": "success", "SECURITY": "success", "RUN_QUALITY": "true",
                    "TESTS_PASSED": "45", "TESTS_FAILED": "1", "TESTS_TOTAL": "46", "REQUIREMENT_IDS": "GOV-1.1,GOV-1.2",
                    "SPEC": "specs/gov", "POLICY_ERRORS": "0", "LINES_ADDED": "30", "LINES_DELETED": "4", "FILES_CHANGED": "3",
                    "REPO": "KyPython/demo", "PR_NUMBER": "7", "PR_AUTHOR": "cursor[bot]", "HEAD_SHA": "abc", "RUN_URL": "u",
@@ -296,7 +301,7 @@ class Scorecard(Base):
 
     def test_GATE_4_4_scorecard_counts_failures_but_never_fails_itself(self):
         with tempfile.TemporaryDirectory() as d:
-            env = {"QUALITY": "failure", "POLICY": "success", "SECRETS": "cancelled", "RUN_QUALITY": "true",
+            env = {"QUALITY": "failure", "POLICY": "success", "SECRETS": "cancelled", "SECURITY": "success", "RUN_QUALITY": "true",
                    "GITHUB_OUTPUT": str(Path(d, "out")), "GITHUB_STEP_SUMMARY": str(Path(d, "sum"))}
             code, log = self.run_script(SCORECARD, env, d)
             self.assertEqual(code, 0, log)
@@ -307,6 +312,85 @@ class Scorecard(Base):
     def test_GATE_4_4_verdict_decision_does_not_read_the_scorecard(self):
         verdict_step = WORKFLOW.split("      - id: v\n", 1)[1]
         self.assertNotIn("card", verdict_step); self.assertNotIn("summary=", verdict_step)
+
+
+DEP_REVIEW = textwrap.dedent(WORKFLOW.split("- name: Dependency review (osv-scanner", 1)[1].split("<<'PY'\n", 1)[1].split("\n          PY\n", 1)[0])
+
+
+class StrictParity(Base):
+    """Checks carried over from LamportLogic (validate-constitution.sh, pre-tool-use hook, deploy-all.yml,
+    validate-container-hardening.js, security-lint.yml, ci.yml shellcheck, dependency review)."""
+
+    def test_GATE_5_1_hand_rolled_jwt_auth_added_fails(self):
+        r = self.repo(); r.write({"src/login.ts": "import jwt from 'jsonwebtoken';\nexport const t = jwt.sign({}, 'k');\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("hand-rolled JWT auth added", out)
+
+    def test_GATE_5_1_shared_auth_package_and_legacy_code_are_allowed(self):
+        r = self.repo({"src/legacy.ts": "import jwt from 'jsonwebtoken';\n"})
+        r.write({"packages/auth/src/jwt.ts": "export const v = jwt.verify;\n", "src/legacy.ts": "import jwt from 'jsonwebtoken';\nexport {};\n", "README.md": "x\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertNotIn("hand-rolled JWT", out); self.assertIn("guardrails: no hand-rolled auth", out)
+
+    def test_GATE_5_2_direct_prisma_client_added_fails(self):
+        r = self.repo(); r.write({"apps/api/db.js": "const db = new PrismaClient();\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("direct `new PrismaClient` added", out)
+
+    def test_GATE_5_3_destructive_command_in_script_fails(self):
+        r = self.repo(); r.write({"scripts/reset.sh": "#!/bin/sh\ngit reset --hard origin/main\n", "package.json": json.dumps({"name": "x", "scripts": {"test": "node --test", "nuke": "prisma migrate reset --force"}, "dependencies": {"a": "1.0.0"}}, indent=2)})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("scripts/reset.sh (hard reset)", out); self.assertIn("package.json (database reset)", out)
+
+    def test_GATE_5_3_destructive_text_in_docs_is_not_flagged(self):
+        r = self.repo(); r.write({"docs/runbook.md": "Never run `git reset --hard` or `terraform destroy`.\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 0, out); self.assertIn("no destructive commands added", out)
+
+    def test_GATE_5_4_deploy_workflow_on_pull_request_fails(self):
+        r = self.repo(); r.write({".github/workflows/deploy.yml": "name: Deploy\non:\n  pull_request:\n  push:\n    branches: [main]\npermissions: {}\njobs: {}\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("deploys on pull_request events", out)
+
+    def test_GATE_5_4_workflow_run_deploy_must_check_success(self):
+        wf = "name: Deploy all\non:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\npermissions: {}\njobs:\n  d:\n    if: %s\n    runs-on: ubuntu-latest\n    steps: []\n"
+        r = self.repo(); r.write({".github/workflows/release.yml": wf % "true"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("never checks `github.event.workflow_run.conclusion == 'success'`", out)
+        r2 = self.repo(); r2.write({".github/workflows/release.yml": wf % "github.event.workflow_run.conclusion == 'success'"})
+        code, out = r2.policy(body="Closes #1")
+        self.assertEqual(code, 0, out); self.assertIn("deploy after CI: `.github/workflows/release.yml` is gated", out)
+
+    def test_GATE_5_5_dockerfile_latest_base_and_root_user_fail(self):
+        r = self.repo(); r.write({"Dockerfile": "FROM node:latest\nCOPY . .\nCMD [\"node\", \"x.js\"]\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertEqual(code, 1, out); self.assertIn("unversioned or :latest base image", out); self.assertIn("runs as root", out)
+
+    def test_GATE_5_5_pinned_non_root_dockerfile_passes(self):
+        r = self.repo(); r.write({"apps/x/Dockerfile": "FROM node:22.11.0-alpine AS build\nRUN echo hi\nFROM node:22.11.0-alpine@sha256:abc\nUSER node\nCMD [\"node\"]\n"})
+        code, out = r.policy(body="Closes #1")
+        self.assertIn("container: `apps/x/Dockerfile` pins its base image and runs as non-root", out)
+
+    def test_GATE_5_6_security_job_is_pinned_and_required_by_verdict(self):
+        self.assertIn('ZIZMOR_SHA256: "eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e"', WORKFLOW)
+        self.assertIn("--require-hashes", WORKFLOW); self.assertIn("--min-severity medium", WORKFLOW)
+        self.assertIn('echo "${OSV_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -', WORKFLOW)
+        self.assertIn("shellcheck --severity=error", WORKFLOW)
+        self.assertIn("needs: [quality, policy, security, secret-scan]", WORKFLOW)
+        self.assertIn('[ "$SECURITY" = "success" ]', WORKFLOW)
+
+    def test_GATE_5_7_dependency_review_fails_only_on_newly_introduced_vulns(self):
+        def res(*vs):
+            return {"results": [{"packages": [{"package": {"ecosystem": "npm", "name": n, "version": ver}, "vulnerabilities": [{"id": i}]} for n, ver, i in vs]}]}
+        with tempfile.TemporaryDirectory() as d:
+            b, h, summ = Path(d, "b.json"), Path(d, "h.json"), Path(d, "s")
+            b.write_text(json.dumps(res(("old", "1.0.0", "GHSA-old"))))
+            h.write_text(json.dumps(res(("old", "1.0.1", "GHSA-old"))))
+            p = subprocess.run(["python3", "-c", DEP_REVIEW, str(b), str(h)], env=dict(os.environ, GITHUB_STEP_SUMMARY=str(summ)), capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            h.write_text(json.dumps(res(("old", "1.0.1", "GHSA-old"), ("evil", "2.0.0", "GHSA-new"))))
+            p = subprocess.run(["python3", "-c", DEP_REVIEW, str(b), str(h)], env=dict(os.environ, GITHUB_STEP_SUMMARY=str(summ)), capture_output=True, text=True)
+            self.assertEqual(p.returncode, 1); self.assertIn("npm evil@2.0.0 introduces GHSA-new", p.stdout)
 
 
 class CallerTemplate(unittest.TestCase):
