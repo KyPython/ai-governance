@@ -21,3 +21,5 @@ Prepare a synthetic pnpm/Turborepo monorepo with a reproducible service build re
 - AC3: Both approved defect classes are present.
 - AC4: No completed repair or answer-key note exists.
 - AC5: At least one unrelated check remains independently runnable.
+## Recording envelope
+- The designated failing service build and bounded verification commands should each complete fast enough to support diagnosis and reruns within a 15:00–45:59 recording.
