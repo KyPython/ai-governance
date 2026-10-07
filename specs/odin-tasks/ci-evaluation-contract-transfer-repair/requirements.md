@@ -20,3 +20,5 @@ Prepare a synthetic grading repository in which written evaluation requirements 
 - AC2: Inspection shows at least one written mandatory requirement is not enforced at the transfer/CI boundary.
 - AC3: The repository contains no completed fail-closed check or final negative fixture.
 - AC4: Unrelated checks are runnable and meaningful.
+## Governing invariant
+**INV-1:** Grading must not begin unless every mandatory pre-grading requirement represented at the transfer boundary has been explicitly validated as satisfied. The starter intentionally violates enforcement of this invariant without identifying the final repair.
