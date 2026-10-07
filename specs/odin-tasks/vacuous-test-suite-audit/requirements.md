@@ -21,3 +21,5 @@ Prepare a synthetic Python/pytest starter repository for the approved Odin task.
 - AC3: Manual comparison of the behavior contract and implementation demonstrates that a real documented behavior can be false while the weak suite remains green.
 - AC4: No file states the final correction or provides ready-to-paste strengthened assertions.
 - AC5: All recorder-visible names are neutral and synthetic.
+## Recording envelope
+- The baseline command should complete quickly enough to support diagnosis and at least two verification runs inside a 15:00–45:59 recording without long idle waits.
