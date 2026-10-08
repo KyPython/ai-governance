@@ -59,7 +59,7 @@ The role grants only the required read action(s) scoped to `incoming/*`, derived
 
 ### Property 2: Unrelated safeguards and structure preserved
 **Validates: Requirements 3.1, 3.2, 4.1, 4.2** (aliases IAC-3, IAC-4)
-S3 public-access block, S3 encryption, SQS KMS, and the three-resource structure are unchanged. — observable check: validator still reports the safeguards; synthesis still emits three resources with expected IDs (RUN LATER).
+S3 public-access block, S3 encryption, SQS KMS, and the three-resource structure are unchanged. — observable check: the existing validator reports only the S3 public-access block and SQS KMS (it does NOT inspect S3 `BucketEncryption`); S3 encryption preservation is verified by an explicitly PROPOSED synthesized-template/regression assertion that compares the synthesized template's S3 `BucketEncryption` before vs after the change to confirm it is unchanged, NOT by the existing validator; synthesis still emits three resources with expected IDs (RUN LATER).
 
 ### Property 3: Validator catches over-broad IAM
 **Validates: Requirements 5.1, 5.2** (alias IAC-5)
@@ -72,7 +72,7 @@ Synthesis is stdlib-only; before/after verification is recorded; no cloud calls,
 ## Error Handling
 
 - Over-broad grant detected: the extended validator reports a `PolicyViolation`-style failure (non-zero outcome) when it finds `s3:*` on `*` (or equivalently over-broad action/resource); it passes only after the scope-down.
-- Preserved-safeguard checks: if the S3 public-access block, S3 encryption, or SQS KMS were altered, the existing validator checks would fail; the change must leave them reporting present and unchanged.
+- Preserved-safeguard checks: if the S3 public-access block or SQS KMS were altered, the existing validator checks would fail; those remain covered by the existing validator. Altering S3 encryption (`BucketEncryption`) would NOT be caught by the existing validator (it does not inspect `BucketEncryption`); the proposed synthesized-template/regression assertion is what detects an encryption change. The change must leave the public-access block, SQS KMS, and S3 encryption reporting present and unchanged.
 - Local-only constraint: synthesis and validation are stdlib-only against a local template file; no AWS/CDK/Terraform/cloud/credential call is made, so failures are local policy/parse outcomes, not cloud errors (Requirement 7.1 / IAC-7).
 - Decision boundary: nothing in error handling reopens or overrides the Odin Rejected/REJECT decision (Requirement 9.1 / IAC-9).
 

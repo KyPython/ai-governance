@@ -53,7 +53,7 @@ Focused baseline commands (registry baseline, verified intent, deterministic, lo
 ## Correctness Properties
 
 ### Property 1: both root causes required
-WHERE only one of the two independent defects is corrected, THE service build SHALL still fail with a remaining observable error (fixing one is insufficient).
+WHERE only one of the two independent defects is corrected, THE service build OR the separate container-target check SHALL still produce a remaining observable failure (fixing one is insufficient); only when BOTH independent corrections are present do both the service build and the container-target check pass.
 **Validates: Requirements 7**
 
 ### Property 2: unrelated check stays green

@@ -119,12 +119,12 @@ As a software engineer, fix a synthetic Python command-line tool whose settings 
 - Rationale/source: `docs/behavior.md`.
 - Acceptance evidence 3.1: parametrized conflict matrix (post-admission).
 
-#### REQ-4 — Pass environment into resolution
-- Subject: wiring.
-- `main()` MUST provide the environment to `load_settings` so precedence is testable.
-- EARS: WHEN `main()` runs, THE environment SHALL be supplied to resolution.
-- Rationale/source: static observation that `main()` does not pass `environ`.
-- Acceptance evidence 4.1: live command runs (post-admission).
+#### REQ-4 — Verify existing environment/default wiring
+- Subject: wiring verification.
+- `load_settings` already defaults `environ` to `os.environ`, so the environment IS available to resolution without added plumbing; REQ-4 SHALL verify, via live CLI runs, that env participates at its correct precedence through this existing default. It MUST NOT require adding an `environ` argument to `main()` or any other unnecessary plumbing.
+- EARS: WHEN `main()` runs, THE environment SHALL already be available to resolution via the existing `os.environ` default and SHALL be exercised live.
+- Rationale/source: `main()` relies on the existing `os.environ` default in `load_settings`, which is correct wiring; verification exercises it live rather than treating it as a gap.
+- Acceptance evidence 4.1: live command runs confirming env participation at correct precedence (post-admission).
 
 #### REQ-5 — Console-entrypoint strategy (review-decided)
 - Subject: entrypoint.

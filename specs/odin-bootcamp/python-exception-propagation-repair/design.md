@@ -37,14 +37,14 @@ Dependencies and reproducibility (pinned profile):
 ## Correctness Properties
 
 ### Property 1: failed item classified failed, cleanup still runs (INV-1)
-WHERE a batch item raises during processing, THE processing report SHALL count that item as failed and SHALL NOT count it as processed, while required cleanup still runs.
+WHERE a batch item raises an UNHANDLED / NON-RECOVERABLE child-operation exception during processing, THE processing report SHALL count that item as failed and SHALL NOT count it as processed, while required cleanup still runs. The deliberate recoverable `HandledItemError` path is EXPLICITLY PRESERVED: a handled item continues and is reported processed (success), not failed.
 **Validates: Requirements 3**
 
 ### Property 2: baseline is green at the pin
 WHEN the registry baseline command runs against the unchanged pinned starter, THE suite SHALL exit 0 with output containing `2 passed`.
 **Validates: Requirements 4**
 
-- **INV-1 (governing invariant):** A batch item that fails MUST be reported as failed and MUST NOT be counted as processed, while required cleanup still runs. The pinned starter intentionally violates this reporting invariant without identifying the final repair.
+- **INV-1 (governing invariant):** A batch item that fails with an unhandled / non-recoverable child-operation exception MUST be reported as failed and MUST NOT be counted as processed, while required cleanup still runs; the deliberate recoverable `HandledItemError` path is preserved and remains reported processed (success). The pinned starter intentionally violates this reporting invariant without identifying the final repair.
 - The seeded defect must be observable through the documented contract and ordinary execution.
 - The baseline suite must exercise relevant code paths while remaining logically insufficient to catch the classification defect.
 
