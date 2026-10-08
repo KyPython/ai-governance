@@ -9,7 +9,7 @@ Correct the recovered, unworked token-bucket limiter so refill is continuous (fr
 ## Architecture
 
 - Confirmed read-only source identity (reuse the UNWORKED recovered source; do not re-create):
-  - `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d5fffbf483228e2111a2956bd9d7`
+  - `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d5fffbf483228e2111a2956bd9d7`
   - `starterSubdirectory`: `bootcamp/token-bucket-rate-limiter`
   - `cloudRecoveryTaskId`: `task_e_6ac6d5fffbf483228e2111a2956bd9d7` (`cloudStatusAtRead`: ready)
   - `diffSha256`: `cc432614f0dcfa728df956ced448d00e5bf1278e3c473ef5aa9b3ae3755fa092`

@@ -9,7 +9,7 @@ Repair the recovered, unworked synthetic CLI so settings resolution follows the 
 ## Architecture
 
 - Confirmed read-only source identity (reuse the UNWORKED recovered source; do not re-create):
-  - `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6cf4a80048322aa762d7aa8e4adcd`
+  - `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6cf4a80048322aa762d7aa8e4adcd`
   - `starterSubdirectory`: `starters/python-cli-configuration-precedence`
   - `cloudRecoveryTaskId`: `task_e_6ac6cf4a80048322aa762d7aa8e4adcd` (`cloudStatusAtRead`: ready)
   - `diffSha256`: `a6452d65e7c1b987e28ba5900a0c21c69acf00b2825e2749c3d163c6ccb3acfd`

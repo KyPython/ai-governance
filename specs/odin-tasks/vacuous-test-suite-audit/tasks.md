@@ -31,7 +31,7 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Cursor**
    - Confirm the repository is in the defective, weak-test starting state documenting only setup/baseline commands. This is technical SOURCE verification only; human capture admission remains separately pending (no completed Recorder/pre-record gates).
 
-6. **Binding validation (no duplication)** (R-provenance; AC2)
+6. **Binding validation (no duplication)** (Introduction Source/Goal bindings; Requirement 4, criterion 1)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
    - Downstream registration/scripts MUST bind the exact Source SHA (`c5986e93719cfd4b08a57104576c04a78d1f16ee`), the verbatim Goal, these requirements, and the actual verified baseline output (`8 passed`). Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (3f08621e0a7a81eda36bdd125c60221c). Never duplicate trackers or jobs.

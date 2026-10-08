@@ -31,10 +31,10 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Cursor**
    - Confirm (read-only) the candidate starter is in the defective starting state with the human-execution work (state-binding repair + negative-case verification) still undone. This is technical SOURCE verification only against the pinned commit; human capture admission is SEPARATELY PENDING. A spec/source PASS implies NO Odin paid approval, NO completed capture/pre-record gate checks, and NO unaided mastery.
 
-6. **Binding validation (no duplication)** (provenance; AC1, AC2, AC3)
+6. **Binding validation (read-only verification; no duplication)** (provenance; Introduction Source/Goal bindings; Requirement 4, criterion 1)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
-   - Downstream registration/scripts MUST bind the exact Source SHA (`c65f9343be723ea36289db541b8f373883cbfe8a`), the verbatim Goal, these requirements, INV-1, and the verified baseline output substrings (`Ran 2 tests`; `"valid"`). Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (`3f38621e0a7a81ac95c5dc0a9aaa211a`). Never duplicate trackers or jobs.
+   - This task is STRICTLY read-only verification of the existing source/Goal/registry/route/proof bindings: confirm (do NOT re-register, promote source, or write content) that the already-registered pinned world binds the exact Source SHA (`c65f9343be723ea36289db541b8f373883cbfe8a`), the verbatim Goal, these requirements, INV-1, and the verified baseline output substrings (`Ran 2 tests`; `"valid"`), reusing the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (`3f38621e0a7a81ac95c5dc0a9aaa211a`). The existing pinned world is already registered and MUST NOT be recreated. An actual Kiro review PASS plus Ky's merge of the specs-only PR to `main` is a PRECONDITION for any FUTURE binding/script/registration implementation; such implementation is NOT an executable final step of this plan. Preserve historical existing-world evidence and all current pins/IDs/Goals/route/human flags. Never duplicate trackers or jobs.
 
 7. **HOLD — human merge gate (final)**
    - All coding and source promotion are HELD until Ky merges the eventual specs-only PR with green required checks (repo CI + `ai-governance / verdict`). Agents never merge, approve, deploy, or promote source. Human diagnosis, repair, recording, attempt, approval, and pay remain human-owned and are not implied by this spec.

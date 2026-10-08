@@ -103,11 +103,28 @@ Prepare a synthetic grading repository in which written evaluation requirements 
 
 1. WHERE the starter is inspected before recording, THE reviewer SHALL be able to verify the valid case passes, the enforcement gap exists, and the final task remains undone. (R10)
 
+### Requirement 11: Goal-derived future repair of the identified pre-grading gap
+
+**User Story:** As a software engineer performing the future repair, I want the one bounded fail-closed validation specified against the same written mandatory requirement identified under Requirement 3, so that the defective case is rejected before scoring while the valid case is preserved.
+
+#### Acceptance Criteria
+
+1. THE future repair SHALL add one bounded fail-closed validation enforcing the SAME written mandatory pre-grading requirement identified unenforced under Requirement 3, criterion 1, so that the grading sequence does NOT begin when that written requirement is not explicitly validated as satisfied — whether or not that clause was previously represented in CI. (R11, R3)
+2. THE future repair SHALL add a negative fixture that is rejected before scoring, AND the existing valid case (`sample_001: 3`) SHALL remain preserved. (R11, R4)
+3. THE future repair SHALL keep exactly ONE bounded validation target; it SHALL NOT claim that the clearance-only worked reference proves enforcement of every written clause in the contract. (R11)
+4. THIS requirement describes FUTURE repaired behavior only; it SHALL NOT be present in the unworked pinned recording starter and does not alter the exact Goal (Requirements 5, 9). (R11)
+
+#### Known limitation (CI-RELATIVE-PATH-COVERAGE-LIMIT)
+
+- The written contract requires the `artifact` to be a RELATIVE path; the intake currently accepts any nonempty `artifact` string, resolves it, and checks containment, so an absolute path inside the manifest directory is not explicitly rejected. This is a STATIC source observation, not an executed reproduction.
+- The separate clearance-only worked reference adds exact approved-clearance validation and its negative fixtures/tests; it does NOT add a relative-path check. Its PASS is scoped to its supplied checks and does NOT establish universal enforcement of every written mandatory clause.
+- Any broadened "all written clauses" invariant requires truthful post-merge FUTURE proof of those actual clauses and is NOT already proven here. Original starter bytes, Goal, and human gates are preserved; no source repair or expanded tests are authorized by this read-only review.
+
 ## Glossary
 
 - **Pinned recording starter:** The unchanged, unworked repository at the pinned source commit that the human works from during capture.
 - **Worked reference:** A separate, disclosed, AI-authored, analyzed, disposable-tested artifact off-screen in the TaskWorkPlan; it does not establish unaided human learning, mastery, paid eligibility, or human approval.
 - **Guided recording/practice (current mode):** The human manually executes edits/tests and narrates actual outcomes from the unchanged unworked starter, with no AI interaction during capture. Manual typing from an unworked input does not by itself imply unaided execution.
 - **Human Transfer Test (separate, future):** A distinct UNAIDED assessment; not the current mode and not a prerequisite for guided world prep.
-- **INV-1:** The governing invariant (see design `## Correctness Properties`): grading must not begin unless every mandatory pre-grading requirement represented at the transfer boundary has been explicitly validated as satisfied.
+- **INV-1:** The governing invariant (see design `## Correctness Properties`): grading must not begin unless every mandatory pre-grading requirement has been explicitly validated as satisfied.
 - **`{python}`:** The pinned CPython interpreter (dependency profile `python-stdlib`, no third-party packages).

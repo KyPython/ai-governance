@@ -66,11 +66,11 @@ WHEN the unrelated workspace check runs against the starter state, THE check SHA
 ## Error Handling
 
 Failure modes (reject and re-pin rather than alter the baseline):
-- Only one defect present, or the two are not independent → fails R7/AC5; re-pin.
-- Service build passes from the starter state → fails R4/AC3; re-pin.
-- Unrelated check also fails → fails R8/AC2 (correction cannot be shown as bounded).
-- Any corrected config, final diff, or verification note present → fails R9/AC6.
-- Baseline drifts from registry exit codes/substrings → fails AC2/AC3/AC4; do not alter the baseline to pass.
+- Only one defect present, or the two are not independent → fails Requirement 7, criterion 1; re-pin.
+- Service build passes from the starter state → fails Requirement 4, criterion 1; re-pin.
+- Unrelated check also fails → fails Requirement 8, criterion 1 (correction cannot be shown as bounded).
+- Any corrected config, final diff, or verification note present → fails Requirement 9, criterion 1.
+- Baseline drifts from registry exit codes/substrings → fails Requirement 8, criterion 1; Requirement 4, criterion 1; Requirement 5, criterion 1; do not alter the baseline to pass.
 
 ## Testing Strategy
 

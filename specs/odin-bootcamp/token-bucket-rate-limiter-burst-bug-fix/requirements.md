@@ -20,7 +20,7 @@ Task Factory row: https://app.notion.com/p/3f08621e0a7a815bb21edf440341ca13
 
 ### Confirmed read-only source identity
 
-- `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d5fffbf483228e2111a2956bd9d7`
+- `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d5fffbf483228e2111a2956bd9d7`
 - `starterSubdirectory`: `bootcamp/token-bucket-rate-limiter`
 - `cloudRecoveryTaskId`: `task_e_6ac6d5fffbf483228e2111a2956bd9d7`
 - `cloudStatusAtRead`: `ready`

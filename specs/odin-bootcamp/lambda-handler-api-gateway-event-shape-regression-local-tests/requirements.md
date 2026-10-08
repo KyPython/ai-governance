@@ -20,7 +20,7 @@ Task Factory row: https://app.notion.com/p/3f08621e0a7a81559019c1739de4151c
 
 ### Confirmed read-only source identity
 
-- `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d2786b8c8322971aeb8206acf6eb`
+- `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d2786b8c8322971aeb8206acf6eb`
 - `starterSubdirectory`: `starters/lambda-event-shape-regression`
 - `cloudRecoveryTaskId`: `task_e_6ac6d2786b8c8322971aeb8206acf6eb`
 - `cloudStatusAtRead`: `ready`
@@ -108,10 +108,10 @@ As a cloud software engineer, diagnose a synthetic Python AWS Lambda handler tha
 
 #### REQ-2 — Handle missing query parameters
 - Subject: absent query.
-- The handler MUST handle missing/absent query parameters without raising, returning the bounded absent-query response from the guided-reference proposal.
-- EARS: WHEN `queryStringParameters` is absent/null, THE handler SHALL return a defined status/body rather than crash.
-- Rationale/source: Goal; static direct-index observation; guided-reference proposal.
-- Acceptance evidence 2.1: absent-query fixture (post-admission).
+- The handler MUST handle missing/absent query parameters without raising, returning the bounded absent-query response from the guided-reference proposal. This applies, for a GET request, both when `queryStringParameters` is absent/null AND when a query mapping is PRESENT but LACKS `name`; method validation precedes query evaluation, so a non-GET request returns 405 rather than this 400.
+- EARS: WHEN a GET request has `queryStringParameters` absent/null OR present-but-without `name`, THE handler SHALL return the defined bounded 400 status/body rather than crash; WHEN the request method is non-GET, THE handler SHALL return the existing 405 before evaluating the query.
+- Rationale/source: Goal; static direct-index observation; guided-reference proposal (handler returns 405 for non-GET before touching query).
+- Acceptance evidence 2.1: v1/v2 GET fixtures for absent/null query AND present-query-without-`name`, plus non-GET-missing-query/name cases returning 405 (post-admission).
 
 #### REQ-3 — Correct status codes and bodies
 - Subject: response contract.

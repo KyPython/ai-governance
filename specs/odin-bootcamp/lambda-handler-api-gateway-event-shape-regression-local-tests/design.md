@@ -9,7 +9,7 @@ Add a bounded event-normalization layer to the recovered, unworked Lambda handle
 ## Architecture
 
 - Confirmed read-only source identity (reuse the UNWORKED recovered source; do not re-create):
-  - `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d2786b8c8322971aeb8206acf6eb`
+  - `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d2786b8c8322971aeb8206acf6eb`
   - `starterSubdirectory`: `starters/lambda-event-shape-regression`
   - `cloudRecoveryTaskId`: `task_e_6ac6d2786b8c8322971aeb8206acf6eb` (`cloudStatusAtRead`: ready)
   - `diffSha256`: `ce2045dd8c2685dc99c45320825c1613225a93ba6e705c3429c9cd5a876af4fa`
@@ -34,17 +34,17 @@ Add a bounded event-normalization layer to the recovered, unworked Lambda handle
 
 ## Correctness Properties
 
-### Property 1: Both shapes normalize to the same internal `{ method, query }` before handler logic runs — v1 from top-level `httpMethod`, v2 from `requestContext.http.method`, with the query from top-level `queryStringParameters.name` in both.
+### Property 1: Method validation runs FIRST — both v1/v2 NON-GET requests return the existing 405 method-not-allowed envelope even without query/name. Only for GET do both shapes normalize to the same internal `{ method, query }` before handler logic runs — v1 method from top-level `httpMethod`, v2 from `requestContext.http.method`, with the query from top-level `queryStringParameters.name` in both.
 **Validates: Requirements 1.1**
-### Property 2: A missing query parameter yields the bounded absent-query response using the same envelope (a 400 with a defined error body; see the guided-reference proposal), never a crash.
+### Property 2: For a GET request, a missing/null `queryStringParameters` OR a PRESENT query mapping that LACKS `name` yields the bounded absent-query response using the same envelope (a 400 with a defined error body; see the guided-reference proposal), never a crash. This 400 does NOT overlap 405: a non-GET request missing query/name still returns 405, because method validation precedes query evaluation.
 **Validates: Requirements 2.1**
 ### Property 3: The repair is confined to the normalization layer (bounded change); the preserved responses keep the full `{statusCode, headers, body}` envelope.
 **Validates: Requirements 3.1, 4.1**
 
 ## Error Handling
 
-- Absent/null `queryStringParameters` (or a missing `name`) returns a bounded 400 with a defined JSON error body using the same `{statusCode, headers, body}` envelope (AI-designed guided-reference proposal below) instead of raising `KeyError`.
-- Non-GET methods continue to return the existing 405 contract (`{"error":"method not allowed"}`) across both shapes.
+- Method validation runs FIRST: NON-GET methods return the existing 405 contract (`{"error":"method not allowed"}`) across both shapes, even when query/name is absent.
+- Only for GET: absent/null `queryStringParameters` OR a present query mapping that lacks `name` returns a bounded 400 with a defined JSON error body using the same `{statusCode, headers, body}` envelope (AI-designed guided-reference proposal below) instead of raising `KeyError`.
 
 ## Testing Strategy
 
@@ -55,7 +55,8 @@ Add a bounded event-normalization layer to the recovered, unworked Lambda handle
 
 ### Guided-reference absent-query proposal (AI-designed INTERNAL guided reference that actual Kiro CHOOSES and LABELS, for Ky's batch-PR review)
 - PRESERVE the existing status/body/envelope for 200 match, 404 unknown, 405 non-GET (read from source), including the `{statusCode, headers: {content-type: application/json}, body}` envelope.
-- CHOOSE a concrete bounded absent-query response: a `400` using the same envelope with body `json.dumps({"error": "missing query parameter: name"}, sort_keys=True)`. This specific status and body is the AI-designed guided-reference choice, LABELED as such; it is NOT presented as a human-decided outcome and is NOT deferred to on-camera design.
+- VALIDATE method FIRST: non-GET requests on either shape return the existing 405 envelope even without query/name; only GET requests then evaluate the query.
+- CHOOSE a concrete bounded absent-query response for GET requests with missing/null `queryStringParameters` OR a present query mapping that lacks `name`: a `400` using the same envelope with body `json.dumps({"error": "missing query parameter: name"}, sort_keys=True)`. This specific status and body is the AI-designed guided-reference choice, LABELED as such; it is NOT presented as a human-decided outcome and is NOT deferred to on-camera design.
 - AI-designed and grounded in the Goal and fixtures; records no human decision. Execution results remain unobserved until a later authorized run.
 
 ## Prior-draft reconciliation

@@ -9,7 +9,7 @@ Repair the recovered, unworked synthetic answer grader so legitimate equivalence
 ## Architecture
 
 - Confirmed read-only source identity (reuse the UNWORKED recovered source; do not re-create):
-  - `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d5fc882c8322be32454df931e3e3`
+  - `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d5fc882c8322be32454df931e3e3`
   - `starterSubdirectory`: `bootcamp/exact-match-grader`
   - `cloudRecoveryTaskId`: `task_e_6ac6d5fc882c8322be32454df931e3e3` (`cloudStatusAtRead`: ready)
   - `diffSha256`: `86e64757ef6adf3756de26567866677fcda85d753fc354a2b0f6d308316763c7`

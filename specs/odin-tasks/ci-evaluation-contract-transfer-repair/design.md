@@ -53,24 +53,24 @@ Focused baseline commands (registry baseline, deterministic, local):
 ## Correctness Properties
 
 ### Property 1: fail-closed at the transfer boundary (INV-1)
-WHERE any mandatory pre-grading requirement represented at the contract-to-CI transfer boundary is not explicitly validated as satisfied, THE grading sequence SHALL NOT begin.
-**Validates: Requirements 3**
+WHERE any mandatory pre-grading requirement written in the contract is not explicitly validated as satisfied, THE grading sequence SHALL NOT begin. A written mandatory clause is NOT exempt merely because it was not previously represented in CI; the future repair enforces the specific written clause identified under Requirement 3, criterion 1, before scoring while preserving the valid case. This keeps ONE bounded validation target and does not claim the clearance-only worked reference proves every written clause.
+**Validates: Requirements 3, 11**
 
 ### Property 2: valid case preserved
 WHEN the registry baseline commands run against the starter state, THE local CI runner SHALL exit 0 with output containing `Ran 3 tests`, and the valid manifest SHALL grade with output containing `sample_001: 3`.
 **Validates: Requirements 4**
 
-- **INV-1 (governing invariant, preserved):** Grading must not begin unless every mandatory pre-grading requirement represented at the transfer boundary has been explicitly validated as satisfied. The starter intentionally violates enforcement of this invariant without identifying the final repair.
+- **INV-1 (governing invariant, preserved):** Grading must not begin unless every mandatory pre-grading requirement has been explicitly validated as satisfied. The starter intentionally violates enforcement of this invariant without identifying the final repair.
 - The valid case must pass from the starter state; unrelated checks must remain meaningful so a later correction can be shown to preserve them.
 
 ## Error Handling
 
 Failure modes (reject and re-pin rather than alter the baseline):
-- Valid case does not pass from the starter → fails R4/AC2/AC3; re-pin.
-- No real enforcement gap (contract fully enforced) → fails R3/AC4; INV-1 not demonstrably violated.
-- Unrelated checks weakened or non-meaningful → fails R8/AC5.
-- Any completed validator, final negative fixture, diagnosis note, or patch diff present → fails R9/AC6.
-- Baseline drifts from registry exit codes/substrings → fails AC2/AC3; do not alter the baseline to pass.
+- Valid case does not pass from the starter → fails Requirement 4, criteria 1 and 2; re-pin.
+- No real enforcement gap (contract fully enforced) → fails Requirement 3, criterion 1; INV-1 not demonstrably violated.
+- Unrelated checks weakened or non-meaningful → fails Requirement 8, criterion 1.
+- Any completed validator, final negative fixture, diagnosis note, or patch diff present → fails Requirement 9, criterion 1.
+- Baseline drifts from registry exit codes/substrings → fails Requirement 4, criteria 1 and 2; do not alter the baseline to pass.
 
 ## Testing Strategy
 

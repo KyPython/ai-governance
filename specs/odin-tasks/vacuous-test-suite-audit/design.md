@@ -59,10 +59,10 @@ WHEN the registry baseline command runs against the unchanged pinned starter, TH
 ## Error Handling
 
 Failure modes (reject and re-pin rather than alter the baseline):
-- Seeded defect not observable via the documented contract → fails R3/AC3; re-pin.
+- Seeded defect not observable via the documented contract → fails Requirement 3, criterion 1; re-pin.
 - Weak suite that is obviously empty (`assert True`, no path coverage) → fails R4.
-- Any strengthened assertion, corrective patch, or diagnosis note present → fails R7/AC4.
-- Baseline drifts from registry (not exit 0 or missing `8 passed`) → fails AC2; do not alter the baseline to pass.
+- Any strengthened assertion, corrective patch, or diagnosis note present → fails Requirement 7, criterion 1; Requirement 10, criterion 1.
+- Baseline drifts from registry (not exit 0 or missing `8 passed`) → fails Requirement 4, criterion 1; do not alter the baseline to pass.
 
 ## Testing Strategy
 

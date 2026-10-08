@@ -50,8 +50,8 @@ Focused baseline commands (registry baseline, deterministic, local):
 ## Correctness Properties
 
 ### Property 1: determinism under a fixed clock/TZ
-WHERE the eventual injected-clock function is evaluated with a fixed instant and fixed `TZ`, THE computed outcome SHALL be identical across repeated runs and across TZ settings.
-**Validates: Requirements 2**
+WHERE the eventual injected-clock function is evaluated with a fixed injected instant AND a fixed requested `location_timezone` input, THE computed label SHALL be identical across repeated runs AND across different ambient process `TZ` settings. A DIFFERENT `location_timezone` INPUT MAY legitimately yield a different date/label; this property does NOT claim identical labels across different location-timezone inputs, and it rejects the blanket reading that ambient `TZ` may alter the repaired label for fixed domain inputs. (Requirement 8 describes defective-starter ambient sensitivity, not the repaired behavior.)
+**Validates: Requirements 11.4**
 
 ### Property 2: baseline stays green at the pin
 WHEN the registry baseline commands run against the unchanged pinned starter, THE suite SHALL exit 0 or 1 with output containing `Ran 1 test`, and the reproduction helper SHALL exit 0 with output containing `Timezone outcomes:`.
@@ -63,10 +63,10 @@ WHEN the registry baseline commands run against the unchanged pinned starter, TH
 ## Error Handling
 
 Failure modes (reject and re-pin rather than alter the baseline):
-- Starter accidentally deterministic (no boundary sensitivity) → fails R3/AC4.
-- Third-party time-freezing dependency leaks into starter → fails R6/AC6.
-- Any injected-clock code, fixed-instant suite, or answer-key note present → fails R7/R9/AC7.
-- Baseline command drifts from registry (wrong exit code or missing substring) → fails AC2/AC3; do not alter the baseline to pass.
+- Starter accidentally deterministic (no boundary sensitivity) → fails Requirement 3, criterion 1; Requirement 8, criterion 1.
+- Third-party time-freezing dependency leaks into starter → fails Requirement 6, criterion 1.
+- Any injected-clock code, fixed-instant suite, or answer-key note present → fails Requirement 7, criterion 1; Requirement 9, criterion 1.
+- Baseline command drifts from registry (wrong exit code or missing substring) → fails Requirement 3, criterion 2; Requirement 5, criterion 1; do not alter the baseline to pass.
 
 ## Testing Strategy
 

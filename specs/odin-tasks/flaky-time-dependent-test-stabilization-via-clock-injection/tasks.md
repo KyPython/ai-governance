@@ -16,12 +16,13 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Cursor**
    - Confirm the eventual injected-clock design remains absent.
 
-3. **Verify (historical, already satisfied at pin): safe reproduction and multi-TZ scaffolding** (R5, R8)
+3. **Verify (historical, already satisfied at pin): safe reproduction and multi-TZ scaffolding** (R5, R8, R10)
    - Assigned coder: **Codex**
    - Reviewer: **Cursor**
    - Confirm time/TZ sensitivity is demonstrable without waiting for real time; confirm no final fixed-timestamp assertions.
+   - PLANNED (Requirement 10, criterion 1): during actual permitted technical verification, record each provided reproduction/repeat command's elapsed duration and check it finishes within the 60-second limit. This is a planned measurement, not a result asserted by this spec pass (nothing executed here).
 
-4. **No-solution-leak review** (R7, R9, R10)
+4. **No-solution-leak review** (R7, R9)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
    - Confirm there is no clock injection, final boundary suite, diagnosis note, or ready-to-paste answer in recorder-visible files.
@@ -31,7 +32,7 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Cursor**
    - Confirm the project is in the deliberately time-dependent starting state. This is technical SOURCE verification only; human capture admission remains separately pending (no completed Recorder/pre-record gates, no unaided-mastery claim).
 
-6. **Binding validation (no duplication)** (R-provenance; AC2, AC3)
+6. **Binding validation (no duplication)** (Introduction Source/Goal bindings; Requirement 3, criterion 2; Requirement 5, criterion 1)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
    - Downstream registration/scripts MUST bind the exact Source SHA (`e5652bcb044cd24d2a7d1c2f8bb93b885cea2069`), the verbatim Goal, these requirements, and the actual verified baseline output (`Ran 1 test`; `Timezone outcomes:`). Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (3f08621e0a7a813289fde5cad87aba40). Never duplicate trackers or jobs.

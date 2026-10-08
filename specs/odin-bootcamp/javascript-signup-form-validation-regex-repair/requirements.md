@@ -20,7 +20,7 @@ Task Factory row: https://app.notion.com/p/3f08621e0a7a810cb2cdf1b3baad13ef
 
 ### Confirmed read-only source identity
 
-- `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d5f886fc8322ae0ceab6e191f68b`
+- `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d5f886fc8322ae0ceab6e191f68b`
 - `starterSubdirectory`: `specs/odin-tasks/javascript-signup-form-validation-regex-repair/starter`
 - `cloudRecoveryTaskId`: `task_e_6ac6d5f886fc8322ae0ceab6e191f68b`
 - `cloudStatusAtRead`: `ready`

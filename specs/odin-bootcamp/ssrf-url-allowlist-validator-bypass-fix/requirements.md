@@ -20,7 +20,7 @@ This spec governs user-authorized guided INTERNAL Bootcamp, fully-disclosed AI-a
 Recovery identity (VERIFIED CURRENT OBSERVATION):
 - cloudRecoveryTaskId: `task_e_6ac6cf5247a883229257638c900f0d8c`
 - diffSha256: `df0f9fbb91b7426040956b99212b85c0b4784d0ba56d003b6de63f086871af47`
-- extractedRoot: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6cf5247a883229257638c900f0d8c`
+- extractedRoot: `<private recovery cache>/extracted/task_e_6ac6cf5247a883229257638c900f0d8c`
 - starterSubdirectory: `specs/odin-tasks/ssrf-url-allowlist-validator/starter`
 - starterFileCount: 8
 - dependencyShape: Python + pytest 8.3.5 / setuptools 75.8.0

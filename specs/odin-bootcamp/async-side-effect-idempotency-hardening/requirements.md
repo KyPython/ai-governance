@@ -22,7 +22,7 @@ The Odin Fit Gate is **PASS** and the Stage is **Awaiting Odin approval**. This 
 Recovery identity (VERIFIED CURRENT OBSERVATION):
 - cloudRecoveryTaskId: `task_e_6ac6cf2519fc8322bffc02abee6bc4e6`
 - diffSha256: `6e81335d891d0d18ed9290822d76af54e50cf8536a31bcc68fab12130a9004d4`
-- extractedRoot: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6cf2519fc8322bffc02abee6bc4e6`
+- extractedRoot: `<private recovery cache>/extracted/task_e_6ac6cf2519fc8322bffc02abee6bc4e6`
 - starterSubdirectory: `starters/async-side-effect-idempotency-hardening`
 - starterFileCount: 8
 - dependencyShape: Python standard library + editable package
@@ -73,7 +73,7 @@ Native Kiro session references: authorship provenance is the author session `ses
 
 #### Acceptance Criteria
 
-1. IDEM-1.1 WHEN a job_id is delivered more than once THE worker SHALL produce exactly one externally observable outbox notification for that job_id. (Source: README contract; bug produces multiple.)
+1. IDEM-1.1 WHEN a job_id is delivered more than once AND the send succeeds THE worker SHALL produce exactly one externally observable outbox notification for that job_id; a failed or uncertain send MAY yield zero or one effect (the reservation is retained, the original exception is propagated, and further same-`job_id` attempts are suppressed in this worker). (Source: README contract; bug produces multiple.)
 2. IDEM-1.2 WHEN the duplicate-replay test runs THE outbox SHALL contain a single record per job_id. (Acceptance RUN LATER.)
 
 ### Requirement 2: Reserve before side effect, race-safe (IDEM-2)

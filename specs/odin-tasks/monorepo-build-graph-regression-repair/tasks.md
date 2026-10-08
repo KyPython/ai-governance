@@ -20,6 +20,7 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Assigned coder: **Codex**
    - Reviewer: **Cursor**
    - Confirm the obsolete name is present in a realistic build/container/config surface and that the repair is not written.
+   - PLANNED baseline assertion (Requirement 5, criterion 1): `pnpm check:container` is a separate real root entrypoint expected to exit `1` with output containing `container target @harbor/dispatch-api is not a workspace package`. These are PLANNED assertions of the observed baseline during permitted technical verification, NOT a claim that any Docker/container build was executed or verified in this spec pass.
 
 4. **Verify (historical, already satisfied at pin): deterministic reproduction scaffolding** (R6, R10)
    - Assigned coder: **Codex**
@@ -31,10 +32,10 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Codex**
    - Confirm neither final correction nor completed verification note is present; the failing starter remains ready for recording. This is technical SOURCE verification only; human capture admission remains separately pending (no completed Recorder/pre-record gates).
 
-6. **Binding validation (no duplication)** (R-provenance; AC2, AC3, AC4)
+6. **Binding validation (no duplication)** (Introduction Source/Goal bindings; Requirement 8, criterion 1; Requirement 4, criterion 1; Requirement 5, criterion 1)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
-   - Downstream registration/scripts MUST bind the exact Source SHA (`2ddf3c8f2a0e054ea2e40ab077c5a48132c34a38`), the verbatim Goal, these requirements, and the actual verified baseline output (`status check passed`; `packages/route-core/dist/routes.json`; `container target @harbor/dispatch-api is not a workspace package`). Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (3f08621e0a7a818f8a72f73e8d4e4da0). Never duplicate trackers or jobs.
+   - Downstream registration/scripts MUST bind the exact Source SHA (`2ddf3c8f2a0e054ea2e40ab077c5a48132c34a38`), the verbatim Goal, these requirements, and the actual verified baseline output as command+exit+substring triples (PLANNED assertions of the observed baseline, NOT a claim the Docker/container build was executed): `pnpm check:unrelated` → exit `0` / `status check passed`; `pnpm build:service` → exit `1` / `packages/route-core/dist/routes.json`; `pnpm check:container` → exit `1` / `container target @harbor/dispatch-api is not a workspace package`. Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (3f08621e0a7a818f8a72f73e8d4e4da0). Never duplicate trackers or jobs.
 
 7. **HOLD — human merge gate (final)**
    - All coding and source promotion are HELD until Ky merges the eventual specs-only PR with green required checks (repo CI + `ai-governance / verdict`). Agents never merge, approve, deploy, or promote source. Human diagnosis/repair/recording/attempt/approval/pay remain human-owned.

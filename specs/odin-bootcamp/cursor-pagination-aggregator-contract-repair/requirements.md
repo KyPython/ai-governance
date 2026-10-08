@@ -37,7 +37,7 @@ Describe the pinned synthetic cursor-pagination client starter whose aggregator 
 
 #### Acceptance Criteria
 
-1. THE starter SHALL include a recorder-visible description stating the aggregation contract — preserve server order while handling repeated cursors, empty pages, and duplicate records — in clear and testable language. (R2)
+1. THE starter SHALL include a recorder-visible description stating the aggregation contract — preserve server order while handling repeated cursors, empty pages, and duplicate records — in clear and testable language, with these explicit observable outcomes drawn from the source contract / existing guided route: (a) STOP before re-requesting a cursor already seen and return the records already collected — a repeated cursor does NOT loop and does NOT raise a new error; (b) FOLLOW a supplied next cursor even when that page's records are empty; (c) EMIT each record id exactly once, retaining its FIRST-seen payload and order. Bind the real hyphenated fixture ids in prose: ordinary → `rec-101`, `rec-102`, `rec-103` with requests `[null, page-2]`; repeated → `rec-201`, `rec-202` with requests `[null, repeat]`; empty → `rec-301`, `rec-302` with requests `[null, gap, after-gap]`; duplicates → `rec-401`, `rec-402`, `rec-403` with requests `[null, overlap]`. This restates the disclosed guided reference; it does NOT invent a repeated-cursor error, HTTP/network/malformed-response policy, or human judgment. (R2)
 
 ### Requirement 3: Reproducible aggregation defect
 

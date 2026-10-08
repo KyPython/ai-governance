@@ -39,7 +39,7 @@ Dependencies and reproducibility (pinned profile):
 ## Correctness Properties
 
 ### Property 1: server order preserved with edge-case guards (INV-1)
-WHERE paginated responses contain repeated cursors, empty pages, or duplicate records, THE aggregator SHALL preserve server order while deduping repeated cursors and duplicate records and tolerating empty pages.
+WHERE paginated responses contain repeated cursors, empty pages, or duplicate records, THE aggregator SHALL preserve server order with these explicit observable outcomes from the source contract / existing guided route: (a) STOP before re-requesting a cursor already seen and return the records already collected (a repeated cursor neither loops nor raises a new error); (b) FOLLOW a supplied next cursor even when that page's records are empty; (c) EMIT each record id exactly once, retaining its FIRST-seen payload and order. Bound fixtures: ordinary → `rec-101`, `rec-102`, `rec-103` with requests `[null, page-2]`; repeated → `rec-201`, `rec-202` with requests `[null, repeat]`; empty → `rec-301`, `rec-302` with requests `[null, gap, after-gap]`; duplicates → `rec-401`, `rec-402`, `rec-403` with requests `[null, overlap]`. This restates the disclosed guided reference; no repeated-cursor error, HTTP/network/malformed policy, or human judgment is invented.
 **Validates: Requirements 3**
 
 ### Property 2: baseline is green at the pin

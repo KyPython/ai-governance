@@ -20,7 +20,7 @@ Task Factory row: https://app.notion.com/p/3f08621e0a7a815ebc8ae59c7a517514
 
 ### Confirmed read-only source identity
 
-- `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6cf4a80048322aa762d7aa8e4adcd`
+- `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6cf4a80048322aa762d7aa8e4adcd`
 - `starterSubdirectory`: `starters/python-cli-configuration-precedence`
 - `cloudRecoveryTaskId`: `task_e_6ac6cf4a80048322aa762d7aa8e4adcd`
 - `cloudStatusAtRead`: `ready`

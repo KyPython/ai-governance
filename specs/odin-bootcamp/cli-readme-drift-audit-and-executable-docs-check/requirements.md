@@ -20,7 +20,7 @@ This spec governs user-authorized guided INTERNAL Bootcamp, fully-disclosed AI-a
 Recovery identity (VERIFIED CURRENT OBSERVATION):
 - cloudRecoveryTaskId: `task_e_6ac6d281600083228055d038ed616cca`
 - diffSha256: `668d30b3e363c8fd6cd48d33e1c58fbc8311ed44588345b24ee4d32602a38cc6`
-- extractedRoot: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d281600083228055d038ed616cca`
+- extractedRoot: `<private recovery cache>/extracted/task_e_6ac6d281600083228055d038ed616cca`
 - starterSubdirectory: `specs/odin-tasks/cli-readme-drift-audit/starter`
 - starterFileCount: 9
 - dependencyShape: Python standard library + editable console script
@@ -98,8 +98,8 @@ Note on invocation: the tool is invoked via its installed console script `trailm
 
 #### Acceptance Criteria
 
-1. DRIFT-4.1 THE corrected README SHALL document `0` success, `3` invalid input (OSError/JSONDecodeError/ValueError, message prefix `trailmark: invalid input:`), `4` file not found (message prefix `trailmark: input not found:`), and an argparse usage error for bad usage. (Source: code exit codes 0/3/4 + argparse; README wrongly documents `1` and `2`.)
-2. DRIFT-4.2 WHEN the docs-check runs each documented failure example THE asserted exit code SHALL match the observed exit code. (Acceptance RUN LATER.)
+1. DRIFT-4.1 THE corrected README SHALL document `0` success, `2` argparse bad usage (diagnostic to stderr, empty stdout), `3` invalid input (OSError/JSONDecodeError/ValueError, message prefix `trailmark: invalid input:`), and `4` file not found (message prefix `trailmark: input not found:`). (Source: code exit codes 0/3/4 + argparse exit `2`; the OLD README's documenting `2` as file-not-found is the drift — `2` is correct for argparse bad usage, and `1` is wrong.) THE corrected README SHALL additionally include ONE deterministic declared bad-usage example (e.g. `trailmark --minimum-score -1`) that exits `2` with the argparse usage diagnostic on stderr and empty stdout, WITHOUT changing the CLI.
+2. DRIFT-4.2 WHEN the docs-check runs each documented failure example (including the bad-usage example) THE asserted exit code SHALL match the observed exit code, AND the bad-usage example SHALL assert the usage diagnostic on stderr with empty stdout. (Acceptance RUN LATER.)
 
 ### Requirement 5: Reconcile example outputs (DRIFT-5)
 
@@ -118,8 +118,8 @@ Note on invocation: the tool is invoked via its installed console script `trailm
 
 #### Acceptance Criteria
 
-1. DRIFT-6.1 WHEN the docs-check runs a documented example THE docs-check SHALL execute it against local fixtures and assert BOTH the stdout and the exit code. (Source: task boundary; current `docs_check.py` only lists ```bash blocks.)
-2. DRIFT-6.2 IF any example's stdout or exit code differs THEN the docs-check SHALL exit non-zero. (Acceptance RUN LATER.)
+1. DRIFT-6.1 WHEN the docs-check runs a documented example THE docs-check SHALL execute it against local fixtures and assert the stdout, the STDERR, and the exit code; each documented example record SHALL carry expected stdout, expected stderr, and expected exit code. Failure examples SHALL assert the declared stderr diagnostic/prefix (e.g. `trailmark: invalid input:`, `trailmark: input not found:`, or the argparse usage diagnostic); successful examples SHALL declare empty stderr. (Source: task boundary; current `docs_check.py` only lists ```bash blocks.)
+2. DRIFT-6.2 IF any example's stdout, stderr, or exit code differs from its declared expectation THEN the docs-check SHALL exit non-zero. (Acceptance RUN LATER.)
 
 ### Requirement 7: Safe, fixture-only examples (DRIFT-7)
 

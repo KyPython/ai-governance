@@ -20,7 +20,7 @@ This spec governs user-authorized guided INTERNAL Bootcamp, fully-disclosed AI-a
 Recovery identity (VERIFIED CURRENT OBSERVATION):
 - cloudRecoveryTaskId: `task_e_6ac6d27c3a808322a45b771b98bc97a7`
 - diffSha256: `0034e1c015bd9b614efa30828346d3751f3a3a11b3436a4c67dbd7831f243f56`
-- extractedRoot: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d27c3a808322a45b771b98bc97a7`
+- extractedRoot: `<private recovery cache>/extracted/task_e_6ac6d27c3a808322a45b771b98bc97a7`
 - starterSubdirectory: `bootcamp/incident-review`
 - starterFileCount: 7
 - dependencyShape: Python standard library

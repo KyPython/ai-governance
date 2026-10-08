@@ -53,7 +53,7 @@ Prepare a synthetic Python project with a deliberately time- and timezone-depend
 
 #### Acceptance Criteria
 
-1. WHERE `docs/behavior.md` is present, THE intended time semantics SHALL be stated neutrally and SHALL NOT instruct the engineer how to refactor. (R4)
+1. THE pinned starter SHALL contain `docs/behavior.md`, AND its intended time semantics SHALL be stated neutrally and SHALL NOT instruct the engineer how to refactor. A missing `docs/behavior.md` SHALL NOT pass this criterion. (R4)
 
 ### Requirement 5: Deterministic reproduction helper
 
@@ -102,6 +102,18 @@ Prepare a synthetic Python project with a deliberately time- and timezone-depend
 #### Acceptance Criteria
 
 1. WHILE the recording envelope is 15:00–45:59, EACH provided reproduction/repeat command SHALL complete within 60 seconds on the prepared local starter so multiple timezone runs can be demonstrated. (R5, R8, R10)
+
+### Requirement 11: Goal-derived future repaired behavior
+
+**User Story:** As a software engineer performing the future repair, I want the injected-clock refactor and its deterministic tests specified, so that the repaired behavior is verifiable against the Goal without altering the unworked starter or its exclusions.
+
+#### Acceptance Criteria
+
+1. THE future repair SHALL inject a clock into the function under test rather than reading the ambient system clock. (R11)
+2. THE repaired tests SHALL use fixed injected instants including a normal instant, a midnight boundary, and a DST boundary. (R11)
+3. WHERE a fixed injected instant and a fixed requested dispatch `location_timezone` input are supplied, THE computed calendar date/label SHALL honor the dispatch-location calendar date independent of the ambient process `TZ`; a different `location_timezone` INPUT MAY legitimately yield a different date. (R11)
+4. THE repaired tests SHALL demonstrate identical, deterministic results across repeated runs and across different ambient process `TZ` settings. (R11)
+5. THIS requirement describes FUTURE repaired behavior only; it SHALL NOT be present in the unworked pinned recording starter, and it does not alter the exact Goal or the starter's exclusion of the repair (Requirements 7, 9). (R11)
 
 ## Glossary
 

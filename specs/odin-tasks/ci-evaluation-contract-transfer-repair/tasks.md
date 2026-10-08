@@ -31,7 +31,7 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
    - Reviewer: **Cursor**
    - Confirm the repo is ready for TaskRecorder with the approved human work still undone. This is technical SOURCE verification only; human capture admission remains separately pending (no completed Recorder/pre-record gates).
 
-6. **Binding validation (no duplication)** (R-provenance; AC2, AC3)
+6. **Binding validation (no duplication)** (Introduction Source/Goal bindings; Requirement 4, criteria 1 and 2)
    - Assigned coder: **Cursor**
    - Reviewer: **Codex**
    - Downstream registration/scripts MUST bind the exact Source SHA (`ca532d92ec3db02224061b3ceef105b2bc113b27`), the verbatim Goal, these requirements, INV-1, and the actual verified baseline output (`Ran 3 tests`; `sample_001: 3`). Reuse the existing prep registry/helper/publisher/learning-map/paired GHA artifacts and the existing Notion row (3f08621e0a7a81b49fd3f290ce5e6d8b). Never duplicate trackers or jobs.

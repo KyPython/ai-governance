@@ -37,7 +37,7 @@ Baseline vs intended: baseline sends then marks `completed_jobs`, so a duplicate
 Interfaces are described in prose from the observed source; no source code is copied.
 
 - `Delivery(job_id, recipient, parcel_code)` — the job delivery record consumed by the worker; `job_id` is the idempotency key.
-- `ParcelWorker.process(delivery)` — the async method that currently awaits `asyncio.sleep(0)`, calls `self._notifications.send(delivery)`, then records `job_id` in `completed_jobs`. The intended deliverable inserts a check-and-reserve of `job_id` before the awaited send; on an already-reserved `job_id` it skips the send so exactly one effect occurs.
+- `ParcelWorker.process(delivery)` — the async method that currently awaits `asyncio.sleep(0)`, calls `self._notifications.send(delivery)`, then records `job_id` in `completed_jobs`. The intended deliverable inserts a check-and-reserve of `job_id` before the awaited send; on an already-reserved `job_id` it skips the send so, for a successful send, exactly one effect occurs.
 - `ParcelWorker.process_batch(deliveries)` — fans out `process` over all deliveries with `asyncio.gather` concurrently; the reservation must be correct under this concurrency.
 - `JsonlOutbox.send(delivery)` — appends exactly one JSONL notification line per call under an `asyncio.Lock`; this is the externally observable effect and is left unchanged.
 - CLI (`parcel_pulse/cli.py`) — observed to replace the outbox at the start of each run and process a JSONL deliveries file; used for the duplicate-replay observation.
@@ -55,7 +55,7 @@ Shapes described in prose; fixture contents are not reproduced.
 
 ### Property 1: Single effect per job_id, race-safe
 **Validates: Requirements 1.1, 1.2, 2.1, 2.2, 5.1, 5.2** (aliases IDEM-1, IDEM-2, IDEM-5)
-A duplicated job_id yields exactly one observable effect; the reservation precedes the awaited send so concurrent identical deliveries cannot both notify. — observable check: duplicate-replay and concurrent-identical tests show one record per job_id (RUN LATER).
+For a SUCCESSFUL send / duplicate replay, a duplicated job_id yields exactly one observable effect; a FAILED or UNCERTAIN send MAY yield zero or one effect under the retained reservation (bounded at-most-once ATTEMPT, not a confirmed-delivery guarantee). The reservation precedes the awaited send so concurrent identical deliveries cannot both notify. — observable check: duplicate-replay and concurrent-identical tests show one record per job_id for successful sends (RUN LATER).
 
 ### Property 2: Ordinary behavior and record format preserved
 **Validates: Requirements 3.1, 3.2, 4.1, 4.2** (aliases IDEM-3, IDEM-4)

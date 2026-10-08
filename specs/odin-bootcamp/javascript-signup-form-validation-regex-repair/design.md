@@ -9,7 +9,7 @@ Repair the recovered, unworked synthetic signup-form validation source so email 
 ## Architecture
 
 - Confirmed read-only source identity (reuse the UNWORKED recovered source; do not re-create):
-  - `extractedRoot`: `/Users/ky/Library/Caches/TaskWorkWorldRecovery/extracted/task_e_6ac6d5f886fc8322ae0ceab6e191f68b`
+  - `extractedRoot`: `<private recovery cache>/extracted/task_e_6ac6d5f886fc8322ae0ceab6e191f68b`
   - `starterSubdirectory`: `specs/odin-tasks/javascript-signup-form-validation-regex-repair/starter`
   - `cloudRecoveryTaskId`: `task_e_6ac6d5f886fc8322ae0ceab6e191f68b` (`cloudStatusAtRead`: ready)
   - `diffSha256`: `89720c3ef31690572cb134fe568704153a2b9019c7981cf0ad364626c2da0e2d`
@@ -20,7 +20,7 @@ Repair the recovered, unworked synthetic signup-form validation source so email 
 
 ## Components and Interfaces
 
-- `src/validation.js`: exports the email and phone validators. The repair targets `emailPattern` (remove the `{2,4}` cap) and `phonePattern` (anchor with `^...$`).
+- `src/validation.js`: exports the email and phone validators. The repair targets `emailPattern` (remove the `{2,4}` TLD cap so an alphabetic TLD >=2 with NO upper cap is accepted, AND include a LITERAL plus `+` in the local-part character class, which the current source local-part class omits) and `phonePattern` (anchor end-to-end with `^...$`). No trim/normalization is introduced; input is evaluated as entered.
 - `src/app.js` / `index.html`: static form wiring consumed by the manual browser check.
 - `server.js`: static server entrypoint (`node server.js`) serving `localhost:4173`; uses `import.meta.dirname` (Node 20.11+ floor).
 - `test/validation.test.js`: Node `--test` table extended with decisive cases.
@@ -48,7 +48,7 @@ Repair the recovered, unworked synthetic signup-form validation source so email 
 
 ## Testing Strategy
 
-- Automated: `node --test` table extended with the decisive valid-email (long TLD, `+` local part) and malformed-phone (surrounding characters) rows; deterministic replay.
+- Automated: `node --test` table extended with an INDEPENDENT plus-address case (a local part containing a literal `+` with an otherwise already-accepted TLD) AND an INDEPENDENT long-TLD case (alphabetic TLD longer than 4 letters, WITHOUT a `+`), plus the malformed-phone (surrounding characters) rows; deterministic replay. Each decisive behavior is covered by its own case so removing only the TLD cap cannot satisfy the plus-address case. Retain alphabetic TLD >=2 with no upper cap, phone end-to-end anchoring, and NO-TRIM/as-entered. This restates the contract (`docs/validation-contract.md`); it does NOT add broader email/IANA policy or claim a human selected it.
 - Manual: browser check at `localhost:4173` via `node server.js`, recorded as a SEPARATE human evidence step.
 - No package install is required (Node built-ins only), so NO offline npm adapter is needed for this world.
 - Meaningful strengthened tests MUST FAIL for the intended behavior BEFORE the smallest production repair and PASS after. The strengthened tests and the production repair MUST occur in a DISPOSABLE worked-reference copy — NEVER the published unworked starter, the original pinned input, or the Recorder-captured workspace before capture. Ordinary baseline runs are kept SEPARATE from any disposable guided worked reference, and source preservation MUST be VERIFIED. Published guided steps come from observed steps; on-camera edits and verification are HUMAN/manual only, with no AI during capture.
