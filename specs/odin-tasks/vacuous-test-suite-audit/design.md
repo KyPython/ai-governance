@@ -75,6 +75,8 @@ Human-only during TaskRecorder — the pending human-owned step performed in gui
 
 Human-boundary scope qualifier: the current intended mode is guided recording/practice. The human manually executes edits/tests and narrates actual outcomes from the unchanged unworked starter, with no AI interaction during capture; manual typing does not by itself imply unaided execution. A separate, future unaided Transfer Test is a distinct assessment. Authorized guided practice and disclosed worked references do not substitute for that assessment or establish unaided mastery, paid eligibility, or human approval.
 
+Planned verification (not executed by this spec pass): future permitted technical verification SHALL check the deterministic/local, network-free-after-install behavior of setup and baseline (using the already-declared offline pinned `pytest==8.3.5` no-index/find-links setup). This is stated as PLANNED only; this correction does not run source commands and does not establish capture, paid, or transfer readiness.
+
 Explicit human gates:
 - Human diagnosis, repair, recording, capture, and any Odin attempt/approval/pay remain human-owned and outside this spec.
 - All coding and source promotion are HELD until Ky merges the specs-only PR with green required checks (repo CI + `ai-governance / verdict`).

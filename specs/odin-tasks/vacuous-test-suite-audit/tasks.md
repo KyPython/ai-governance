@@ -19,7 +19,7 @@ This plan is a Kiro spec review/enhancement in local session sess_ef9c3844-0570-
 3. **Verify (historical, already satisfied at pin): deterministic setup and baseline verification** (R5, R8)
    - Assigned coder: **Codex**
    - Reviewer: **Cursor**
-   - Confirm a short local command/script proves the initial suite is green (`8 passed`) from the defective starting state.
+   - Confirm a short local command/script proves the initial suite is green (`8 passed`) from the defective starting state. PLANNED read-only verification SHALL also confirm the Requirement 8 criterion 2 behavior: that setup and baseline are deterministic/local and network-free after the pinned dependencies are installed into `.venv`. This is a planned read-only check, not executed by this spec pass.
 
 4. **Perform no-solution-leak review** (R7, R10)
    - Assigned coder: **Cursor**

@@ -86,6 +86,7 @@ Prepare a synthetic Python/pytest starter repository for the approved Odin task.
 #### Acceptance Criteria
 
 1. WHILE the recording envelope is 15:00–45:59, THE baseline command SHALL complete quickly enough to support diagnosis and at least two verification runs without long idle waits, and no completed solution SHALL be present. (R8, R10)
+2. WHERE the pinned dependencies have been installed from `requirements-dev.txt` into `.venv`, THE setup and baseline commands SHALL be deterministic and local and SHALL NOT depend on network-dependent runtime behavior after installation; the baseline uses the local `.venv` interpreter and local synthetic code/fixtures. (R8)
 
 ### Requirement 9: Packaging
 

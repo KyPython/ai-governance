@@ -52,15 +52,15 @@ Focused baseline commands (registry baseline, deterministic, local):
 
 ## Correctness Properties
 
-### Property 1: fail-closed at the transfer boundary (INV-1)
-WHERE any mandatory pre-grading requirement written in the contract is not explicitly validated as satisfied, THE grading sequence SHALL NOT begin. A written mandatory clause is NOT exempt merely because it was not previously represented in CI; the future repair enforces the specific written clause identified under Requirement 3, criterion 1, before scoring while preserving the valid case. This keeps ONE bounded validation target and does not claim the clearance-only worked reference proves every written clause.
+### Property 1: bounded-repair acceptance for the identified clause (BR-ACC)
+WHERE the single written mandatory clause identified under Requirement 3, criterion 1 is not explicitly validated as satisfied, THE grading sequence SHALL NOT begin — enforcing that SAME clause before scoring regardless of whether it was previously represented in CI, while preserving the valid case. A written mandatory clause is NOT exempt merely because it was not previously represented in CI. This keeps ONE bounded validation target and does not claim the clearance-only worked reference proves every written clause.
 **Validates: Requirements 3, 11**
 
 ### Property 2: valid case preserved
 WHEN the registry baseline commands run against the starter state, THE local CI runner SHALL exit 0 with output containing `Ran 3 tests`, and the valid manifest SHALL grade with output containing `sample_001: 3`.
 **Validates: Requirements 4**
 
-- **INV-1 (governing invariant, preserved):** Grading must not begin unless every mandatory pre-grading requirement has been explicitly validated as satisfied. The starter intentionally violates enforcement of this invariant without identifying the final repair.
+- **INV-1 (governing invariant, preserved):** Grading must not begin unless every mandatory pre-grading requirement has been explicitly validated as satisfied. The starter intentionally violates enforcement of this invariant without identifying the final repair. This is the written contract's COMPLETE-CONTRACT desired invariant; its full coverage is NOT proven by the bounded repair (BR-ACC) or by the clearance-only worked reference, and the relative-path clause remains unenforced. INV-1 itself is not narrowed.
 - The valid case must pass from the starter state; unrelated checks must remain meaningful so a later correction can be shown to preserve them.
 
 ## Error Handling
