@@ -1,0 +1,39 @@
+# Agent role map for every repo that uses the KyPython/ai-governance gate.
+# The `policy` job of governance.yml reads this file from KyPython/ai-governance@main on every run,
+# so a change here applies everywhere at once. Owned by Ky (see .github/CODEOWNERS); only Ky merges it.
+#
+# Identities match a GitHub login (the PR opener, or the login inside a users.noreply.github.com
+# commit email), a commit email, or a commit author/committer name. Case-insensitive.
+# Limit: git author/committer fields are self-declared, and agents that push with Ky's token
+# show up as KyPython. The gate cannot tell those commits apart from Ky's own.
+version: 1
+owner: KyPython
+
+# Paths that hold specs/requirements. Only the spec-author role may change them, and a PR
+# that changes them must not change code.
+spec_paths:
+  - specs/
+  - .kiro/specs/
+
+roles:
+  spec-author:
+    description: Authors specs and requirements (requirements.md, design.md, tasks.md) in spec-only PRs merged before code. Only Kiro, with Ky as owner override.
+    identities:
+      - kiro-agent[bot]
+      - KyPython
+  coder:
+    description: Implements existing specs only, one task per PR, reviewed by a different agent. Never writes or edits specs in a code PR.
+    identities:
+      - kiro-agent[bot]   # Kiro's builders code too, but its code PRs may not touch specs
+      - chatgpt-codex-connector[bot]
+      - codex
+      - cursor[bot]
+      - cursoragent
+      - Copilot
+      - copilot-swe-agent[bot]
+      - claude[bot]
+      - grok-bot
+  approver:
+    description: Ky reviews and merges by hand. Agents never merge (AGENTS.md rule). Not enforced by required approvals, because every agent PR appears as KyPython.
+    identities:
+      - KyPython
