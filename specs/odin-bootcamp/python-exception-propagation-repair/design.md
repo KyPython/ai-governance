@@ -37,7 +37,7 @@ Dependencies and reproducibility (pinned profile):
 ## Correctness Properties
 
 ### Property 1: failed item classified failed, cleanup still runs (INV-1)
-WHERE a batch item raises an UNHANDLED / NON-RECOVERABLE child-operation exception during processing, THE processing report SHALL count that item as failed and SHALL NOT count it as processed, while required cleanup still runs. The deliberate recoverable `HandledItemError` path is EXPLICITLY PRESERVED: a handled item continues and is reported processed (success), not failed.
+WHERE a batch item raises an UNHANDLED / NON-RECOVERABLE child-operation exception during processing, THE processing report SHALL count that item as failed and SHALL NOT count it as processed, while required cleanup still runs, and the exception SHALL propagate out of the batch runner after classification and cleanup complete. The deliberate recoverable `HandledItemError` path is EXPLICITLY PRESERVED: a handled item continues and is reported processed (success), not failed.
 **Validates: Requirements 3**
 
 ### Property 2: baseline is green at the pin

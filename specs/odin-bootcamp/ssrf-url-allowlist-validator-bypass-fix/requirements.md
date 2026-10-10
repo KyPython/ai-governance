@@ -88,7 +88,8 @@ Native Kiro session references: Authorship provenance is author session `sess_6c
 #### Acceptance Criteria
 
 1. SSRF-3.1 WHEN a URL embeds an allowlisted string in userinfo (e.g., `https://catalog.example.test@evil.example.test/...`) THE validator SHALL reject it based on the real host (`evil.example.test`). (Source: prefix-match bypass class.)
-2. SSRF-3.2 WHEN the userinfo row runs THE validator SHALL return not-allowed. (Acceptance RUN LATER.)
+2. SSRF-3.2 WHEN a URL contains userinfo on an otherwise allowlisted host (e.g., `https://user:pass@catalog.example.test/x`) THE validator SHALL reject it, enforcing the no-userinfo policy regardless of whether the parsed host is allowlisted. (Source: normalization policy — no userinfo.)
+3. SSRF-3.3 WHEN the userinfo rows run THE validator SHALL return not-allowed. (Acceptance RUN LATER.)
 
 ### Requirement 4: One consistent normalization policy for case/port/subdomain/scheme (SSRF-4)
 

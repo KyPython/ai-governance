@@ -37,8 +37,8 @@ Describe the pinned synthetic batch-command starter in which nested exception ha
 
 #### Acceptance Criteria
 
-1. THE starter SHALL include a recorder-visible description stating that a failed item must be reported as failed (not processed), with cleanup still performed, in clear and testable language. (R2)
-2. WHERE the intended behavior is documented, THE description SHALL state the failed-item reporting and cleanup semantics neutrally and SHALL NOT instruct the engineer how to patch the runner. (R2)
+1. THE starter SHALL include a recorder-visible description stating that a failed item must be reported as failed (not processed), with cleanup still performed, and that an unhandled/non-recoverable exception must propagate out of the batch runner after proper classification and cleanup, in clear and testable language. (R2)
+2. WHERE the intended behavior is documented, THE description SHALL state the failed-item reporting, cleanup, and exception-propagation semantics neutrally and SHALL NOT instruct the engineer how to patch the runner. (R2)
 
 ### Requirement 3: Reproducible classification defect
 
@@ -103,4 +103,4 @@ Describe the pinned synthetic batch-command starter in which nested exception ha
 - **Guided recording/practice (current mode):** The human manually executes edits/tests and narrates actual outcomes from the unchanged unworked starter, with no AI interaction during capture. Manual typing from an unworked input does not by itself imply unaided execution.
 - **Human Transfer Test (separate, future):** A distinct UNAIDED assessment; not the current mode and not a prerequisite for guided world prep.
 - **`{venvPython}`:** The `.venv` interpreter (dependency profile `python-pytest`, `pytest==8.3.5`, dev deps pinned in `requirements-dev.txt`, run with `PYTHONPATH=src`).
-- **Governing invariant INV-1:** A batch item whose child operation raises an UNHANDLED / NON-RECOVERABLE exception MUST be reported as failed and MUST NOT be counted as processed, while required cleanup still runs exactly once. A `HandledItemError` is deliberately recovered and is RETAINED as a processed success with its cleanup performed once (per the source error hierarchy and recoverable fixture); INV-1 does NOT reclassify it as failed. The pinned starter intentionally violates this reporting invariant for unhandled/non-recoverable failures without identifying the final repair.
+- **Governing invariant INV-1:** A batch item whose child operation raises an UNHANDLED / NON-RECOVERABLE exception MUST be reported as failed and MUST NOT be counted as processed, while required cleanup still runs exactly once, and the exception MUST propagate out of the batch runner after classification and cleanup complete. A `HandledItemError` is deliberately recovered and is RETAINED as a processed success with its cleanup performed once (per the source error hierarchy and recoverable fixture); INV-1 does NOT reclassify it as failed. The pinned starter intentionally violates this reporting invariant for unhandled/non-recoverable failures without identifying the final repair.

@@ -60,8 +60,8 @@ Shapes described in prose; fixture contents are not reproduced.
 The allow decision uses parsed scheme + exact normalized host (+ port), never prefix matching. — observable check: table rows show prefix-only matches fail (RUN LATER).
 
 ### Property 2: Suffix-extension and userinfo bypasses rejected
-**Validates: Requirements 2.1, 2.2, 3.1, 3.2** (aliases SSRF-2, SSRF-3)
-Hosts extending an allowlisted host, or embedding it in userinfo, are rejected on the real host. — observable check: suffix-extension and userinfo rows return not-allowed (RUN LATER).
+**Validates: Requirements 2.1, 2.2, 3.1, 3.2, 3.3** (aliases SSRF-2, SSRF-3)
+Hosts extending an allowlisted host, or embedding it in userinfo, are rejected on the real host; userinfo is forbidden even on otherwise allowlisted hosts. — observable check: suffix-extension and userinfo rows return not-allowed (RUN LATER).
 
 ### Property 3: Consistent normalization
 **Validates: Requirements 4.1, 4.2, 4.3** (alias SSRF-4)
