@@ -16,6 +16,9 @@ name: AI Governance (reusable)
 #                  (PR template, .systems-thinking/contracts/)
 #                - workflow security baseline: explicit permissions + SHA-pinned
 #                  actions (scripts/validate-security-baseline.js, surface W)
+#   spec gate    - code PRs need an issue, a spec folder with numbered EARS acceptance
+#                  criteria, and changed tests that cite those IDs (Kiro specs layout;
+#                  LamportLogic requirement->test matrix; bootcamp GOLDEN_SPEC IDs)
 #   secret-scan  - gitleaks over the full PR commit range, pinned + checksummed
 #                  (.github/workflows/secret-scan.yml)
 #   verdict      - single fail-closed aggregate to mark as the required check
@@ -56,7 +59,9 @@ on:
         type: string
         default: ""
       require-issue-reference:
-        description: Fail (instead of warn) when the PR body does not reference an issue.
+        description: >
+          Fail (instead of warn) when a PR that changes no code lacks an issue reference.
+          PRs that change code always need one (spec gate).
         type: boolean
         default: false
       enforce-conventional-title:
@@ -71,11 +76,18 @@ on:
       verdict:
         description: "pass or fail"
         value: ${{ jobs.verdict.outputs.verdict }}
+      summary:
+        description: "Scorecard JSON (schema ai-governance-summary/v1); also in the job summary and the ai-governance-summary artifact"
+        value: ${{ jobs.verdict.outputs.summary }}
 
 permissions:
   contents: read
 
 env:
+  ZIZMOR_VERSION: "1.30.1"
+  ZIZMOR_SHA256: "eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e"
+  OSV_VERSION: "2.6.0"
+  OSV_SHA256: "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
   GITLEAKS_VERSION: "8.30.1"
   GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
 
@@ -87,6 +99,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      tests_passed: ${{ steps.tests.outputs.passed }}
+      tests_failed: ${{ steps.tests.outputs.failed }}
+      tests_total: ${{ steps.tests.outputs.total }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -147,7 +163,7 @@ jobs:
             if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
             if uses_tool mypy mypy.ini; then mypy . && summary "type-check: mypy passed"; else summary "type-check: mypy not configured - skipped"; fi
             if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then
-              pytest && summary "test: pytest passed"
+              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log" && summary "test: pytest passed"
             elif [ "$REQUIRE_TESTS" = "true" ]; then
               echo "::error::No tests found (tests/, test/ or test_*.py). AI-authored changes must ship with tests."
               exit 1
@@ -178,7 +194,7 @@ jobs:
           elif has_script typecheck; then run_script typecheck; summary "typecheck: passed"
           else summary "type-check: no \`type-check\`/\`typecheck\` script - skipped"; fi
 
-          if has_script test; then run_script test; summary "test: passed"
+          if has_script test; then run_script test 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"; summary "test: passed"
           elif [ "$REQUIRE_TESTS" = "true" ]; then
             echo "::error::No \`test\` script in package.json. AI-authored changes must ship with tests."
             exit 1
@@ -193,8 +209,53 @@ jobs:
         run: |
           set -euo pipefail
           echo "Running: ${EXTRA_COMMAND}"
-          bash -c "${EXTRA_COMMAND}"
+          bash -c "${EXTRA_COMMAND}" 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
           echo "- extra: \`${EXTRA_COMMAND}\` passed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Parse test results (scorecard)
+        id: tests
+        if: always()
+        shell: python3 {0}
+        run: |
+          # TEST-PARSER: best-effort counts from Jest, Vitest, pytest, unittest, node:test and Mocha output.
+          import os, re
+          from pathlib import Path
+          def parse(text):
+              text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+              p = f = t = 0; seen = False; ut_ran = None
+              def n(rx, line):
+                  m = re.search(rx, line); return int(m.group(1)) if m else 0
+              for line in text.splitlines():
+                  s = line.strip()
+                  if re.match(r"^Tests:\s.*\btotal\b", s):                                   # Jest
+                      seen = True; p += n(r"(\d+) passed", s); f += n(r"(\d+) failed", s); t += n(r"(\d+) total", s)
+                  elif re.match(r"^Tests\s+.*\(\d+\)$", s):                                  # Vitest
+                      seen = True; p += n(r"(\d+) passed", s); f += n(r"(\d+) failed", s); t += n(r"\((\d+)\)$", s)
+                  elif re.match(r"^=+ .*\b(passed|failed|errors?)\b.* in [\d.]+s.*=+$", s):   # pytest
+                      seen = True; ok_, bad = n(r"(\d+) passed", s), n(r"(\d+) failed", s) + n(r"(\d+) errors?", s)
+                      p += ok_; f += bad; t += ok_ + bad + n(r"(\d+) skipped", s)
+                  elif re.match(r"^Ran \d+ tests? in ", s):                                    # unittest
+                      ut_ran = n(r"Ran (\d+)", s)
+                  elif ut_ran is not None and re.match(r"^(OK|FAILED)\b", s):
+                      seen = True; bad = n(r"failures=(\d+)", s) + n(r"errors=(\d+)", s); skip = n(r"skipped=(\d+)", s)
+                      t += ut_ran; f += bad; p += ut_ran - bad - skip; ut_ran = None
+                  elif re.match(r"^(#|ℹ) tests \d+$", s):                                      # node:test
+                      seen = True; t += n(r"tests (\d+)", s)
+                  elif re.match(r"^(#|ℹ) pass \d+$", s):
+                      p += n(r"pass (\d+)", s)
+                  elif re.match(r"^(#|ℹ) fail \d+$", s):
+                      f += n(r"fail (\d+)", s)
+                  elif re.match(r"^\d+ passing\b", s):                                         # Mocha
+                      seen = True; p += n(r"(\d+) passing", s); t += n(r"(\d+) passing", s)
+                  elif re.match(r"^\d+ failing\b", s):
+                      f += n(r"(\d+) failing", s); t += n(r"(\d+) failing", s)
+              return (p, f, t) if seen else None
+          log = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "test-output.log"
+          r = parse(log.read_text(errors="replace")) if log.is_file() else None
+          with open(os.environ["GITHUB_OUTPUT"], "a") as o:
+              if r:
+                  o.write(f"passed={r[0]}\nfailed={r[1]}\ntotal={r[2]}\n")
+          print("tests:", r or "not recognized")
 
   policy:
     name: policy
@@ -202,6 +263,13 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      requirement_ids: ${{ steps.policy.outputs.requirement_ids }}
+      spec: ${{ steps.policy.outputs.spec }}
+      policy_errors: ${{ steps.policy.outputs.policy_errors }}
+      lines_added: ${{ steps.policy.outputs.lines_added }}
+      lines_deleted: ${{ steps.policy.outputs.lines_deleted }}
+      files_changed: ${{ steps.policy.outputs.files_changed }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -209,6 +277,7 @@ jobs:
           persist-credentials: false
 
       - name: Governance policy checks
+        id: policy
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -222,6 +291,10 @@ jobs:
           ENFORCE_TITLE: ${{ inputs.enforce-conventional-title }}
           STC_MODE: ${{ inputs.systems-thinking-contract }}
           BASELINE_MODE: ${{ inputs.workflow-baseline }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO: ${{ github.repository }}
+          # Single role map owned by Ky; read from main so role changes apply everywhere at once.
+          ROLES_URL: https://raw.githubusercontent.com/KyPython/ai-governance/main/roles.yml
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -237,6 +310,54 @@ jobs:
           event = os.environ.get("EVENT_NAME", "")
           is_pr = event.startswith("pull_request")
           MARKER = "AI-GOVERNANCE:v1"
+          covered_ids, spec_refs = set(), []  # scorecard
+
+          # 0. Role map (KyPython/ai-governance/roles.yml). Fails closed if it cannot be read.
+          def parse_roles(text):
+              # Minimal YAML subset (nested maps, lists of scalars, comments) - no third-party deps.
+              root = {}; stack = [(-1, root)]; pending = None
+              for raw in text.splitlines():
+                  line = re.sub(r"\s+#.*$", "", raw).rstrip()
+                  if not line.strip() or line.lstrip().startswith("#"):
+                      continue
+                  ind = len(line) - len(line.lstrip()); body_ = line.strip()
+                  while stack and ind <= stack[-1][0] and not (body_.startswith("- ") and isinstance(stack[-1][1], list) and ind == stack[-1][0]):
+                      stack.pop()
+                  parent = stack[-1][1]
+                  if body_.startswith("- "):
+                      if pending is not None:
+                          lst = []; pending[0][pending[1]] = lst; stack.append((ind, lst)); parent = lst; pending = None
+                      parent.append(body_[2:].strip().strip("'\""))
+                      continue
+                  key, _, val = body_.partition(":")
+                  key, val = key.strip(), val.strip().strip("'\"")
+                  if val:
+                      parent[key] = val; pending = None
+                  else:
+                      child = {}; parent[key] = child; stack.append((ind, child)); pending = (parent, key)
+              return root
+
+          roles, roles_src = None, ""
+          try:
+              if os.environ.get("ROLES_FILE"):
+                  roles_src = os.environ["ROLES_FILE"]; roles_text = Path(roles_src).read_text()
+              else:
+                  import urllib.request
+                  roles_src = os.environ.get("ROLES_URL", "")
+                  with urllib.request.urlopen(roles_src, timeout=20) as r:
+                      roles_text = r.read().decode("utf-8")
+              roles = parse_roles(roles_text)
+              def ids_of(role):
+                  return {i.lower() for i in (roles.get("roles", {}).get(role, {}).get("identities") or [])}
+              SPEC_AUTHORS, CODERS, OWNER = ids_of("spec-author"), ids_of("coder"), (roles.get("owner") or "").lower()
+              spec_dirs = [d.strip().strip("/") for d in roles.get("spec_paths") or [] if d.strip()]
+              if not SPEC_AUTHORS or not OWNER or not spec_dirs:
+                  raise ValueError("roles.yml needs owner, spec_paths and roles.spec-author.identities")
+              ok(f"role map loaded from {roles_src}: spec authors = {', '.join(sorted(SPEC_AUTHORS))}")
+          except Exception as e:
+              roles = None; SPEC_AUTHORS, CODERS, OWNER = set(), set(), ""
+              spec_dirs = ["specs", ".kiro/specs"]
+              err(f"Role map could not be loaded from {roles_src or 'roles.yml'} ({e}). The gate fails closed without it.")
 
           # 1. AGENTS.md present and points at the canonical governance rules.
           agents = Path("AGENTS.md")
@@ -264,14 +385,14 @@ jobs:
           if is_pr:
               base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
               if base:
-                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACDMR", f"{base}..{os.environ['PR_HEAD_SHA']}").splitlines() if l]
                   have_range = True
               else:
                   warn("Could not compute PR merge-base; skipping changed-file checks.")
           elif event == "push":
               before, after = os.environ.get("PUSH_BEFORE", ""), os.environ.get("PUSH_AFTER", "")
               if before and set(before) != {"0"} and subprocess.run(["git", "cat-file", "-e", before + "^{commit}"]).returncode == 0:
-                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACMR", f"{before}..{after}").splitlines() if l]
+                  changed = [l for l in git("diff", "--name-only", "--diff-filter=ACDMR", f"{before}..{after}").splitlines() if l]
                   have_range = True
 
           # 3. Workflow security baseline: explicit permissions + SHA-pinned `uses:`.
@@ -314,11 +435,10 @@ jobs:
               else:
                   warn(f"PR title `{title}` is not a Conventional Commit.")
 
-              # 5. Issue reference (PR template: "Closes #").
-              if re.search(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|relates? to|refs?)\b:?\s+([\w.-]+/[\w.-]+)?#\d+", body) or re.search(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+", body):
+              # 5. Issue reference (PR template: "Closes #"). Mandatory for code PRs (spec gate, 8).
+              has_issue = bool(re.search(r"(?i)\b(close[sd]?|fix(e[sd])?|resolve[sd]?|relates? to|refs?)\b:?\s+([\w.-]+/[\w.-]+)?#\d+", body) or re.search(r"https://github\.com/[\w.-]+/[\w.-]+/issues/\d+", body))
+              if has_issue:
                   ok("PR references an issue")
-              elif head_ref.startswith("dependabot/"):
-                  ok("dependabot PR - issue reference not required")
               elif os.environ.get("REQUIRE_ISSUE") == "true":
                   err("PR body does not reference an issue (add `Closes #<n>` or `Relates to #<n>`).")
               else:
@@ -331,7 +451,7 @@ jobs:
           structural_re = re.compile(r"^(packages/|\.github/workflows/|scripts/validate|docs/quality/|docs/architecture/|apps/tools/skeleton-base/)|(^|/)(AGENTS\.md|CLAUDE\.md|\.cursorrules(\.md)?|SPEC\.md|empire-spec\.md)$|^\.cursor/rules/")
           structural = [f for f in changed if structural_re.search(f)]
           if enforce_stc and structural:
-              contracts = [f for f in changed if f.startswith(".systems-thinking/contracts/") and f.endswith(".json")]
+              contracts = [f for f in changed if f.startswith(".systems-thinking/contracts/") and f.endswith(".json") and Path(f).is_file()]
               if not contracts:
                   err("Structural change without a SYSTEMS_THINKING_CONTRACT. Add .systems-thinking/contracts/<date>-<slug>.json covering: " + ", ".join(structural))
               else:
@@ -356,6 +476,234 @@ jobs:
           elif structural:
               warn("Structural paths changed (no contract enforced in this repo): " + ", ".join(structural))
 
+          # 8. SPEC GATE (no spec, no code). Format: Kiro-style spec folder
+          #    <spec-dir>/<slug>/requirements.md with numbered EARS acceptance criteria
+          #    ("GOV-1.1 WHEN ... THEN the system SHALL ..."), traced from tests by ID
+          #    (LamportLogic AUTH-REQ-001 matrix / EO-1 trace; bootcamp [R-SPEC-F1] IDs).
+          #    Exemption is by explicit path rule only - never by label, branch name or author.
+          #    Specs are written by Kiro (or Ky) in spec-only PRs and must exist on the base branch
+          #    before a code PR references them; a PR may not change code and specs together.
+          if is_pr:
+              DOC_RE = re.compile(r"\.(md|mdx|rst|txt|adoc|png|jpe?g|gif|svg|webp|ico|pdf)$|(^|/)(docs?/|LICENSE|NOTICE|CHANGELOG)|(^|/)\.cursorrules$|^\.cursor/rules/", re.I)
+              META_RE = re.compile(r"^(" + "|".join(re.escape(d) + "/" for d in spec_dirs) + r"|\.systems-thinking/|\.ai-governance/contracts/)")
+              CONFIG_RE = re.compile(r"(^|/)(\.gitignore|\.gitattributes|\.editorconfig|\.prettierrc(\.\w+)?|\.prettierignore|\.npmrc|\.nvmrc|\.node-version|\.python-version|CODEOWNERS|purpose-inventory\.json)$|^\.github/(workflows/[^/]+\.ya?ml$|ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE|dependabot\.ya?ml$)")
+              LOCK_RE = re.compile(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|go\.sum)$")
+              DEP_KEYS = {"dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "packageManager", "overrides", "resolutions", "pnpm"}
+              base = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+
+              def dependency_only_manifest(f):
+                  # package.json counts as non-code only when nothing but dependency keys changed.
+                  if not re.search(r"(^|/)package\.json$", f) or not base or not Path(f).is_file():
+                      return False
+                  old = subprocess.run(["git", "show", f"{base}:{f}"], capture_output=True, text=True)
+                  if old.returncode != 0:
+                      return False
+                  try:
+                      a, b = json.loads(old.stdout), json.loads(Path(f).read_text())
+                  except Exception:
+                      return False
+                  strip = lambda d: {k: v for k, v in d.items() if k not in DEP_KEYS}
+                  return strip(a) == strip(b)
+
+              def exempt(f):
+                  return bool(DOC_RE.search(f) or META_RE.search(f) or CONFIG_RE.search(f) or LOCK_RE.search(f)
+                              or re.search(r"(^|/)requirements[\w.-]*\.txt$", f) or dependency_only_manifest(f)
+                              or (os.environ.get("REPO") == "KyPython/ai-governance" and f == "roles.yml"))
+
+              code = [f for f in changed if not exempt(f)]
+              spec_changes = [f for f in changed if any(f.startswith(d + "/") for d in spec_dirs)]
+              if not code:
+                  if spec_changes:
+                      ok("spec gate: spec-only PR (" + ", ".join(spec_changes) + "); Ky reviews and merges specs before code is built from them")
+                  else:
+                      ok("spec gate: no code paths changed (exempt by path rule)")
+              else:
+                  print("Code paths requiring a spec: " + ", ".join(code))
+                  if not has_issue:
+                      err("Spec gate: this PR changes code, so it must link an issue (`Closes #<n>` / `Relates to #<n>`).")
+                  # Specs are authored by Kiro (or Ky) and merged first; coders implement them.
+                  if spec_changes:
+                      err("Spec gate: this PR changes code AND spec files (" + ", ".join(spec_changes) + "). Coding agents do not write their own specs: "
+                          "move the spec into its own spec-only PR (authored by Kiro or Ky), get it merged, then reference it here with `Spec: <dir>/<slug>`.")
+                  # The spec must be referenced in the body and already exist on the base branch.
+                  base_ref = os.environ.get("PR_BASE_SHA", "")
+                  def base_text(path):
+                      for rev in (base_ref, base):
+                          if rev:
+                              r = subprocess.run(["git", "show", f"{rev}:{path}"], capture_output=True, text=True)
+                              if r.returncode == 0:
+                                  return r.stdout
+                      return None
+                  folders = set()
+                  for m in re.finditer(r"(?im)^\W*specs?\W*:[\s*`]*([\w./-]+)", body):
+                      folders.add(re.sub(r"/(requirements|design|tasks)\.md$", "", m.group(1)).strip("/"))
+                  crit_re = re.compile(r"^\s*(?:[-*]|\d+[.)])?\s*\**`?\[?([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+\.\d+)\]?`?\**[:.)]?\s.*\bSHALL\b", re.M)
+                  ids, valid = set(), []
+                  for folder in sorted(folders):
+                      req = f"{folder}/requirements.md"
+                      if not any(folder.startswith(d + "/") and folder.count("/") == d.count("/") + 1 for d in spec_dirs):
+                          err(f"Spec gate: `Spec: {folder}` must name a folder `<dir>/<slug>` inside the spec dirs ({', '.join(spec_dirs)}).")
+                          continue
+                      text = base_text(req)
+                      if text is None:
+                          err(f"Spec gate: `{req}` does not exist on the base branch. Specs must be merged to the base branch (spec-only PR, authored by Kiro or Ky) before code is built from them.")
+                          continue
+                      found = set(crit_re.findall(text))
+                      if not found:
+                          err(f"Spec gate: `{req}` has no numbered EARS acceptance criteria (e.g. `GOV-1.1 WHEN <trigger> THEN the system SHALL <response>`).")
+                          continue
+                      ids |= found; valid.append(req); spec_refs.append(folder)
+                  if not folders:
+                      err("Spec gate: code changed but the PR body references no spec. Add a line `Spec: specs/<slug>` (or `.kiro/specs/<slug>`) naming a spec that already exists on the base branch.")
+                  elif valid:
+                      ok(f"spec gate: {len(ids)} acceptance criteria in {', '.join(valid)} (on base branch)")
+                  # Traceability: a changed test must cite a criterion ID (or its requirement ID).
+                  TEST_RE = re.compile(r"(^|/)(tests?|__tests__)/|\.(test|spec)\.[cm]?[jt]sx?$|(^|/)test_[^/]*\.py$|_test\.(py|go|rb)$|Tests?\.(gd|cs|java|kt|swift)$|\.bats$")
+                  tests = [f for f in changed if TEST_RE.search(f) and not META_RE.search(f) and Path(f).is_file()]
+                  if ids:
+                      all_ids = ids | {i.rsplit(".", 1)[0] for i in ids}
+                      # `GOV-1.1` may also be written `GOV_1_1` (test identifiers cannot contain - or .).
+                      pats = {i: re.compile(r"(?<![A-Za-z0-9-])" + re.escape(i).replace(r"\-", "[-_]").replace(r"\.", "[._]") + r"(?![A-Za-z0-9]|[._-]\d)") for i in all_ids}
+                      traced = {}
+                      for t in tests:
+                          text = t + "\n" + Path(t).read_text(encoding="utf-8", errors="replace")
+                          hits = {i for i, rx in pats.items() if rx.search(text)}
+                          if hits:
+                              traced[t] = sorted(hits); covered_ids.update(hits)
+                      if traced:
+                          ok("traceability: " + "; ".join(f"{t} -> {', '.join(h)}" for t, h in traced.items()))
+                      elif tests:
+                          err("Traceability: changed tests (" + ", ".join(tests) + ") do not cite any requirement ID from the spec. Name or comment each test with the ID it verifies (e.g. `GOV-1.1`).")
+                      else:
+                          err("Traceability: code changed but no test was added or changed. Add or update a test that cites the acceptance criterion IDs it verifies.")
+
+          # 9. ROLES. Only the spec-author role (roles.yml) may change spec paths. Checks the PR opener and the
+          #    author and committer of every commit in the PR. Git identities are self-declared and agents that
+          #    push with Ky's token appear as KyPython, so this proves declared identities only.
+          if is_pr and roles is not None:
+              head = os.environ.get("PR_HEAD_SHA", "")
+              log = git("log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", f"{base}..{head}") if base and head else ""
+              def ident(name, email):
+                  m = re.match(r"^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$", email or "", re.I)
+                  return {x.lower() for x in (name, email, m.group(1) if m else None) if x}
+              people = []  # (label, identity set)
+              if os.environ.get("PR_AUTHOR"):
+                  people.append((f"PR opener @{os.environ['PR_AUTHOR']}", {os.environ["PR_AUTHOR"].lower()}))
+              for line in log.splitlines():
+                  sha, an, ae, cn, ce = (line.split("\x1f") + [""] * 5)[:5]
+                  people.append((f"{sha[:7]} author {an} <{ae}>", ident(an, ae)))
+                  if ce.lower() != "noreply@github.com":  # GitHub web-flow committer = platform, not a person
+                      people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
+              def role_of(ids):
+                  if ids & SPEC_AUTHORS: return "spec-author"
+                  if ids & CODERS: return "coder"
+                  return "unknown"
+              if spec_changes:
+                  bad = [label + f" (role: {role_of(ids)})" for label, ids in people if not ids & SPEC_AUTHORS]
+                  if bad:
+                      err("Role gate: only the spec-author role (" + ", ".join(sorted(SPEC_AUTHORS)) + ") may change spec paths. "
+                          "Not spec authors: " + "; ".join(bad) + ". Coders implement existing specs; Kiro writes them.")
+                  else:
+                      ok("role gate: every PR opener/commit identity that touched specs is a spec author (git identities are self-declared; "
+                         "commits pushed with KyPython's token count as KyPython)")
+              if os.environ.get("REPO") == "KyPython/ai-governance" and "roles.yml" in changed:
+                  bad = [label for label, ids in people if OWNER not in ids]
+                  if bad:
+                      err(f"Role gate: roles.yml may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
+                  else:
+                      ok("role gate: roles.yml changed by the owner identity only")
+              coders = sorted({label for label, ids in people if role_of(ids) == "coder"})
+              if coders:
+                  print("Coder identities in this PR: " + "; ".join(coders))
+
+          # 10-13. STRICT-REPO PARITY (LamportLogic validate-constitution.sh, .claude/hooks/pre-tool-use.mjs,
+          #        deploy-all.yml workflow_run gating, validate-container-hardening.js). Added lines only, so legacy
+          #        code does not fail unrelated PRs.
+          if is_pr and base:
+              head = os.environ.get("PR_HEAD_SHA", "")
+              def added_lines(paths):
+                  out = []
+                  if not paths:
+                      return out
+                  cur = None
+                  for l in git("diff", "-U0", "--no-color", f"{base}..{head}", "--", *paths).splitlines():
+                      if l.startswith("+++ "):
+                          cur = l[6:] if l.startswith("+++ b/") else None
+                      elif l.startswith("+") and not l.startswith("+++") and cur:
+                          out.append((cur, l[1:]))
+                  return out
+              present = [f for f in changed if Path(f).is_file()]
+              # 10. Architecture guardrails: no hand-rolled JWT auth, no direct PrismaClient (use the shared packages).
+              SRC_RE = re.compile(r"\.(m?[jt]sx?|cjs|cts|mts)$")
+              GUARD_ALLOW = re.compile(r"(^|/)(packages/(auth|security|database)/|__mocks__/|node_modules/)")
+              src = [f for f in present if SRC_RE.search(f) and not GUARD_ALLOW.search(f)]
+              guard = [(f, l) for f, l in added_lines(src) if not l.lstrip().startswith(("//", "*", "/*"))]
+              auth_hits = [f for f, l in guard if re.search(r"jwt\.sign|jwt\.verify|jsonwebtoken", l)]
+              db_hits = [f for f, l in guard if re.search(r"new\s+PrismaClient\b", l)]
+              if auth_hits:
+                  err("Guardrail: hand-rolled JWT auth added (jwt.sign / jwt.verify / jsonwebtoken) in " + ", ".join(sorted(set(auth_hits))) + ". Use the shared auth package.")
+              if db_hits:
+                  err("Guardrail: direct `new PrismaClient` added in " + ", ".join(sorted(set(db_hits))) + ". Import the shared database client instead.")
+              if not auth_hits and not db_hits:
+                  ok("guardrails: no hand-rolled auth or direct database client added")
+              # 11. Destructive commands written into scripts, workflows, manifests.
+              SCRIPT_RE = re.compile(r"(\.(sh|bash|zsh|ps1|mk)$|(^|/)(Makefile|Dockerfile[^/]*|package\.json|justfile)$|^\.github/workflows/[^/]+\.ya?ml$|^\.husky/)")
+              DESTRUCTIVE = [
+                  (r"\bgit\s+push\b[^\n;]*(?:--force(?:-with-lease)?|\s-f)\b", "force push"),
+                  (r"\bgit\s+reset\s+--hard\b", "hard reset"),
+                  (r"\bgit\s+clean\s+-[^\s]*[fdx]", "destructive git clean"),
+                  (r"\b(?:prisma\s+migrate\s+reset|supabase\s+db\s+reset)\b", "database reset"),
+                  (r"\bdrop\s+database\b", "database drop"),
+                  (r"\bterraform\s+destroy\b", "infrastructure destroy"),
+                  (r"\brm\s+-rf\s+/(?:\s|$|\*)", "root filesystem delete"),
+              ]
+              dhits = sorted({f"{f} ({label})" for f, l in added_lines([f for f in present if SCRIPT_RE.search(f)])
+                              for rx, label in DESTRUCTIVE if re.search(rx, l, re.I) and not l.lstrip().startswith("#")})
+              if dhits:
+                  err("Destructive command added to automation: " + "; ".join(dhits) + ". These need explicit human authorization, not a script.")
+              else:
+                  ok("no destructive commands added to scripts/workflows")
+              # 12. Deploy after CI: deploy/release/publish workflows never run on PR events, and workflow_run deploys
+              #     require the upstream run to have succeeded.
+              for f in [f for f in present if re.match(r"^\.github/workflows/[^/]+\.ya?ml$", f)]:
+                  text = Path(f).read_text(encoding="utf-8", errors="replace")
+                  head_name = (re.search(r"(?m)^name:\s*(.+)$", text) or [None, ""])[1]
+                  if not re.search(r"deploy|release|publish", f + " " + head_name, re.I):
+                      continue
+                  on_block = re.search(r"(?ms)^(?:on|\"on\"|'on'):(.*?)(?=^\S)", text + "\nx")
+                  triggers = set(re.findall(r"(?m)^\s{2}([a-z_]+):", on_block.group(1))) if on_block else set()
+                  inline = re.search(r"(?m)^on:\s*\[?([^\n\]]+)\]?\s*$", text)
+                  if inline:
+                      triggers |= {t.strip() for t in inline.group(1).split(",")}
+                  if triggers & {"pull_request", "pull_request_target"}:
+                      err(f"Deploy after CI: `{f}` deploys on pull_request events. Deploy only from the default branch after CI (workflow_run on success, or push to main).")
+                  elif "workflow_run" in triggers and not re.search(r"conclusion\s*==\s*'success'", text):
+                      err(f"Deploy after CI: `{f}` uses workflow_run but never checks `github.event.workflow_run.conclusion == 'success'`.")
+                  elif "push" in triggers and not re.search(r"(?ms)push:\s*\n\s+branches:", text):
+                      err(f"Deploy after CI: `{f}` deploys on push to any branch. Restrict `push.branches` to the default branch.")
+                  else:
+                      ok(f"deploy after CI: `{f}` is gated")
+                      if "workflow_dispatch" in triggers:
+                          warn(f"`{f}` can be dispatched by hand; make sure the dispatch path runs the same CI gate first.")
+              # 13. Container hardening for added/changed Dockerfiles.
+              for f in [f for f in present if re.search(r"(^|/)Dockerfile[^/]*$", f)]:
+                  lines = [l.strip() for l in Path(f).read_text(encoding="utf-8", errors="replace").splitlines()]
+                  froms = [l.split()[1] for l in lines if re.match(r"(?i)^FROM\s+\S", l)]
+                  bad = [img for img in froms if img.lower() != "scratch" and "@sha256:" not in img and (":" not in img.split("/")[-1] or img.endswith(":latest"))]
+                  if bad:
+                      err(f"Container: `{f}` uses an unversioned or :latest base image ({', '.join(bad)}). Pin an exact tag (ideally @sha256 digest).")
+                  last_from = max((i for i, l in enumerate(lines) if re.match(r"(?i)^FROM\s", l)), default=-1)
+                  users = [l.split(None, 1)[1].strip() for l in lines[last_from + 1:] if re.match(r"(?i)^USER\s+\S", l)]
+                  if not users or users[-1].split(":")[0] in ("root", "0"):
+                      err(f"Container: `{f}` runs as root in its final stage. Add a non-root `USER`.")
+                  if not bad and users and users[-1].split(":")[0] not in ("root", "0"):
+                      ok(f"container: `{f}` pins its base image and runs as non-root")
+              # PR template / dependabot (LamportLogic .github/PULL_REQUEST_TEMPLATE.md, dependabot.yml).
+              if not any(Path(x).is_file() for x in (".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md", "PULL_REQUEST_TEMPLATE.md", "docs/PULL_REQUEST_TEMPLATE.md")):
+                  warn("No PR template (.github/PULL_REQUEST_TEMPLATE.md). LamportLogic's template asks for what changed, why, risk, and tests.")
+              if not Path(".github/dependabot.yml").is_file() and not Path(".github/dependabot.yaml").is_file():
+                  warn("No .github/dependabot.yml: dependency and action updates are not automated.")
+
           # 7. Governance files touched -> human code-owner review is mandatory.
           gov = [f for f in changed if re.search(r"^(\.github/|\.husky/|\.claude/|\.cursor/)|(^|/)(AGENTS\.md|CLAUDE\.md|CODEOWNERS)$", f)]
           if gov:
@@ -366,7 +714,130 @@ jobs:
               for p in passed: s.write(f"- PASS {p}\n")
               for w in warnings: s.write(f"- WARN {w}\n")
               for e in errors: s.write(f"- FAIL {e}\n")
+
+          # Scorecard outputs (read by the verdict job). Changed lines exclude lockfiles.
+          if is_pr:
+              mb = git("merge-base", os.environ.get("PR_BASE_SHA", ""), os.environ.get("PR_HEAD_SHA", "")).strip()
+              rng = f"{mb}..{os.environ.get('PR_HEAD_SHA', '')}" if mb else ""
+          else:
+              b4 = os.environ.get("PUSH_BEFORE", "")
+              rng = f"{b4}..{os.environ.get('PUSH_AFTER', '')}" if b4 and set(b4) != {"0"} else ""
+          added = deleted = files = 0
+          for row in (git("diff", "--numstat", rng).splitlines() if rng else []):
+              parts = row.split("\t")
+              if len(parts) < 3:
+                  continue
+              files += 1
+              if re.search(r"(^|/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|poetry\.lock|uv\.lock|Cargo\.lock|go\.sum)$", parts[2]):
+                  continue
+              added += int(parts[0]) if parts[0].isdigit() else 0
+              deleted += int(parts[1]) if parts[1].isdigit() else 0
+          if os.environ.get("GITHUB_OUTPUT"):
+              with open(os.environ["GITHUB_OUTPUT"], "a") as o:
+                  o.write(f"requirement_ids={','.join(sorted(covered_ids))}\nspec={','.join(spec_refs)}\npolicy_errors={len(errors)}\n"
+                          f"lines_added={added}\nlines_deleted={deleted}\nfiles_changed={files}\n")
           sys.exit(1 if errors else 0)
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Changed files
+        id: diff
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+          BASELINE_MODE: ${{ inputs.workflow-baseline }}
+        run: |
+          set -euo pipefail
+          base=""; head="${PUSH_AFTER}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            head="$PR_HEAD_SHA"; base="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA" || true)"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            base="$PUSH_BEFORE"
+          fi
+          if [ -n "$base" ]; then
+            git diff --name-only --diff-filter=ACMR "$base" "$head" > "$RUNNER_TEMP/changed.txt"
+          else
+            git ls-files > "$RUNNER_TEMP/changed.txt"
+          fi
+          if [ "$BASELINE_MODE" = "all" ]; then
+            git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' > "$RUNNER_TEMP/workflows.txt"
+          else
+            grep -E '^\.github/workflows/[^/]+\.ya?ml$' "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/workflows.txt" || true
+          fi
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+          echo "### security" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Workflow static analysis (zizmor, pinned + hash verified)
+        if: inputs.workflow-baseline != 'off'
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(while read -r f; do [ -f "$f" ] && echo "$f"; done < "$RUNNER_TEMP/workflows.txt")
+          if [ "${#files[@]}" -eq 0 ]; then echo "- zizmor: no workflows in scope" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          printf 'zizmor==%s --hash=sha256:%s\n' "$ZIZMOR_VERSION" "$ZIZMOR_SHA256" > "$RUNNER_TEMP/zizmor-req.txt"
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/bin/pip" install --quiet --require-hashes --only-binary=:all: -r "$RUNNER_TEMP/zizmor-req.txt"
+          "$RUNNER_TEMP/zizmor/bin/zizmor" --offline --min-severity medium --format github "${files[@]}"
+          echo "- zizmor ${ZIZMOR_VERSION}: no medium/high findings in ${#files[@]} workflow(s)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Shellcheck changed scripts
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(grep -E '\.(sh|bash)$' "$RUNNER_TEMP/changed.txt" | while read -r f; do [ -f "$f" ] && echo "$f"; done || true)
+          if [ "${#files[@]}" -eq 0 ]; then echo "- shellcheck: no shell scripts changed" >> "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          shellcheck --severity=error "${files[@]}"
+          echo "- shellcheck: ${#files[@]} script(s) clean at severity=error" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dependency review (osv-scanner, pinned + checksum verified)
+        env:
+          BASE: ${{ steps.diff.outputs.base }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BASE" ] || ! grep -qE '(^|/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|uv\.lock|Pipfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|Gemfile\.lock|composer\.lock)$' "$RUNNER_TEMP/changed.txt"; then
+            echo "- dependency review: no dependency manifests changed" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          curl -fsSL -o "$RUNNER_TEMP/osv-scanner" "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+          scan() {
+            set +e; "$RUNNER_TEMP/osv-scanner" scan source -r --format json "$1" > "$2" 2>"$2.log"; rc=$?; set -e
+            if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ] && [ "$rc" -ne 128 ]; then cat "$2.log" >&2; echo "::error::osv-scanner failed (exit $rc); the gate fails closed."; exit 1; fi
+            [ -s "$2" ] || echo '{"results":[]}' > "$2"
+          }
+          git worktree add -q --detach "$RUNNER_TEMP/base-tree" "$BASE"
+          scan . "$RUNNER_TEMP/osv-head.json"
+          scan "$RUNNER_TEMP/base-tree" "$RUNNER_TEMP/osv-base.json"
+          python3 - "$RUNNER_TEMP/osv-base.json" "$RUNNER_TEMP/osv-head.json" <<'PY'
+          import json, os, sys
+          def vulns(path):
+              out = {}
+              for r in json.load(open(path)).get("results", []):
+                  for p in r.get("packages", []):
+                      pkg = p.get("package", {})
+                      for v in p.get("vulnerabilities", []):
+                          out[(pkg.get("ecosystem"), pkg.get("name"), v["id"])] = pkg.get("version")
+              return out
+          base, head = vulns(sys.argv[1]), vulns(sys.argv[2])
+          new = sorted(set(head) - set(base))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write(f"- dependency review: {len(new)} newly introduced known vulnerabilities ({len(head)} total in head, {len(base)} in base)\n")
+          for eco, name, vid in new:
+              print(f"::error::Dependency review: {eco} {name}@{head[(eco, name, vid)]} introduces {vid} (https://osv.dev/{vid})")
+          sys.exit(1 if new else 0)
+          PY
 
   secret-scan:
     name: secret-scan
@@ -402,10 +873,11 @@ jobs:
           have() { [ -n "${1:-}" ] && git cat-file -e "${1}^{commit}" 2>/dev/null; }
           log_opts="--all --full-history"
           if [ "$EVENT_NAME" = "pull_request" ] && have "$PR_BASE_SHA" && have "$PR_HEAD_SHA"; then
-            log_opts="--no-merges $(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")..${PR_HEAD_SHA}"
+            log_opts="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")..${PR_HEAD_SHA}"
           elif [ "$EVENT_NAME" = "push" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ] && have "$PUSH_BEFORE"; then
-            log_opts="--no-merges ${PUSH_BEFORE}..${PUSH_AFTER}"
+            log_opts="${PUSH_BEFORE}..${PUSH_AFTER}"
           fi
+          # Merge commits are included on purpose: a conflict resolution can introduce a secret.
           echo "gitleaks --log-opts=\"${log_opts}\""
           config_args=()
           if [ -f .gitleaks.toml ]; then config_args=(--config .gitleaks.toml); fi
@@ -423,23 +895,97 @@ jobs:
   verdict:
     name: verdict
     if: always()
-    needs: [quality, policy, secret-scan]
+    needs: [quality, policy, security, secret-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     outputs:
       verdict: ${{ steps.v.outputs.verdict }}
+      summary: ${{ steps.card.outputs.summary }}
     steps:
+      - name: Scorecard (machine-readable summary)
+        id: card
+        if: always()
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          POLICY: ${{ needs.policy.result }}
+          SECRETS: ${{ needs.secret-scan.result }}
+          SECURITY: ${{ needs.security.result }}
+          RUN_QUALITY: ${{ inputs.run-quality }}
+          TESTS_PASSED: ${{ needs.quality.outputs.tests_passed }}
+          TESTS_FAILED: ${{ needs.quality.outputs.tests_failed }}
+          TESTS_TOTAL: ${{ needs.quality.outputs.tests_total }}
+          REQUIREMENT_IDS: ${{ needs.policy.outputs.requirement_ids }}
+          SPEC: ${{ needs.policy.outputs.spec }}
+          POLICY_ERRORS: ${{ needs.policy.outputs.policy_errors }}
+          LINES_ADDED: ${{ needs.policy.outputs.lines_added }}
+          LINES_DELETED: ${{ needs.policy.outputs.lines_deleted }}
+          FILES_CHANGED: ${{ needs.policy.outputs.files_changed }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: python3 {0}
+        run: |
+          # SCORECARD: reports only; it never changes the verdict. Schema: ai-governance-summary/v1.
+          import json, os
+          e = os.environ.get
+          def num(k):
+              v = e(k) or ""; return int(v) if v.isdigit() else None
+          def lst(k):
+              return [x for x in (e(k) or "").split(",") if x]
+          jobs = {"quality": e("QUALITY") or "unknown", "policy": e("POLICY") or "unknown", "security": e("SECURITY") or "unknown", "secret-scan": e("SECRETS") or "unknown"}
+          failed = [j for j, r in jobs.items() if r != "success" and not (j == "quality" and r == "skipped" and e("RUN_QUALITY") == "false")]
+          added, deleted = num("LINES_ADDED"), num("LINES_DELETED")
+          card = {
+              "schema": "ai-governance-summary/v1",
+              "repo": e("REPO"), "pr": num("PR_NUMBER"), "pr_author": e("PR_AUTHOR") or None, "head_sha": e("HEAD_SHA"),
+              "verdict": "pass" if not failed else "fail",
+              "jobs": jobs, "failed_checks": len(failed), "failed_check_names": failed,
+              "policy_errors": num("POLICY_ERRORS"),
+              "tests": {"passed": num("TESTS_PASSED"), "failed": num("TESTS_FAILED"), "total": num("TESTS_TOTAL")},
+              "spec": lst("SPEC"), "requirement_ids": lst("REQUIREMENT_IDS"),
+              "changed_lines": {"added": added, "deleted": deleted, "total": None if added is None else added + (deleted or 0)},
+              "files_changed": num("FILES_CHANGED"),
+              "run_url": e("RUN_URL"),
+          }
+          blob = json.dumps(card, separators=(",", ":"))
+          with open("ai-governance-summary.json", "w") as f:
+              json.dump(card, f, indent=2)
+          if e("GITHUB_OUTPUT"):
+              with open(e("GITHUB_OUTPUT"), "a") as o:
+                  o.write(f"summary={blob}\n")
+          t = card["tests"]
+          tests = "not recognized" if t["total"] is None else f"{t['passed']}/{t['total']}" + (f" ({t['failed']} failed)" if t["failed"] else "")
+          if e("GITHUB_STEP_SUMMARY"):
+              with open(e("GITHUB_STEP_SUMMARY"), "a") as s:
+                  s.write("### ai-governance scorecard\n\n| verdict | tests passed/total | requirement IDs covered | failed checks | changed lines (+/-) | files |\n|---|---|---|---|---|---|\n")
+                  s.write(f"| {card['verdict']} | {tests} | {', '.join(card['requirement_ids']) or '-'} | {card['failed_checks']} | "
+                          f"{card['changed_lines']['total']} (+{added}/-{deleted}) | {card['files_changed']} |\n\n")
+                  s.write("```json\n" + json.dumps(card, indent=2) + "\n```\n")
+          print("AI_GOVERNANCE_SUMMARY " + blob)
+
+      - name: Upload scorecard artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ai-governance-summary
+          path: ai-governance-summary.json
+          retention-days: 90
+          if-no-files-found: warn
+
       - id: v
         env:
           QUALITY: ${{ needs.quality.result }}
           POLICY: ${{ needs.policy.result }}
           SECRETS: ${{ needs.secret-scan.result }}
+          SECURITY: ${{ needs.security.result }}
           RUN_QUALITY: ${{ inputs.run-quality }}
         run: |
-          echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS}"
-          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
-          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
+          echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS}"
+          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
+          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "verdict=fail" >> "$GITHUB_OUTPUT"
