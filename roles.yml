@@ -21,6 +21,7 @@ roles:
     identities:
       - kiro-agent[bot]
       - KyPython
+      - Kiro Agent
   coder:
     description: Implements existing specs only, one task per PR, reviewed by a different agent. Never writes or edits specs in a code PR.
     identities:
