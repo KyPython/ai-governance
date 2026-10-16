@@ -632,13 +632,13 @@ jobs:
                       err("Role gate: only the spec-author role (" + ", ".join(sorted(SPEC_AUTHORS)) + ") may change spec paths. "
                           "Not spec authors: " + "; ".join(bad) + ". Coders implement existing specs; Kiro writes them.")
                   elif history is not None and opener:
-                      ok("role gate: spec changes have allowed declared identities (self-declared, not verified)")
+                      ok("role gate: every PR opener/commit identity that touched specs is a spec author (self-declared, not verified)")
               if os.environ.get("REPO") == "KyPython/ai-governance" and "roles.yml" in changed:
                   bad = [label for label, ids in people if OWNER not in ids]
                   if bad:
                       err(f"Role gate: roles.yml may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
                   elif history is not None and opener:
-                      ok("role gate: role map changes declare owner identity")
+                      ok("role gate: roles.yml changed by the owner identity only (self-declared, not verified)")
               if code:
                   authorized = CODERS | {OWNER}
                   bad = [label for label, ids in people if not ids & authorized]
