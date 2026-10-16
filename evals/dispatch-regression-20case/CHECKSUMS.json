@@ -1,0 +1,13 @@
+{
+  ".gitignore": "4198869c07e90d7bf91e1dd00688c169ec2f4886e8dcd1b76e466e6ec5d5a51c",
+  "README.md": "72fd76df03c60e62316797b78f673e1fb8dd37a073d016d0f382c83d452c5590",
+  "TRIAL_REPORT.md": "9f8f40d86e34fa6d580e1ef902acb3fc60feb618c4752cfd1b38b729234da113",
+  "approval_eval.py": "14ee419d312ef3c9ab35e5a30439d242f125ce652bb97dd67aaf0f6deaac24be",
+  "approval_gate.py": "493788829141bec93a800c8bca49480bfa9e2156bc4fcebc42b6cd91bd10f1cc",
+  "cases.py": "959cb4eacbaa0424a5cfdd3a89148131c86603204c3b72539c9bd189e99e220c",
+  "offline_results.json": "59e88fd4226bd8ea21625736c54db192fd12dd9e37a5319e0d6b8ed68fb81a1d",
+  "requirements.txt": "f815827e80f232073b45b0f3612c10627417a2dc36ec22b6c5275c55d6754576",
+  "run_native.sh": "a7e4beefbad778246b1218c2546944d9b9a480f1cffa177f40e06b6899834f5d",
+  "run_offline.py": "14d05e79a1a9f7d2bdd7d3f0e2544539972e288e8aca72bfb43b597556fa9c4a",
+  "scoring.py": "510fa06ce3d7bd2f105d87b537ea483ccc17bf73d6c5d749a9d8ff419906b526"
+}
