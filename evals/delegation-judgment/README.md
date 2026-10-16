@@ -3,13 +3,12 @@
 **Question:** can an orchestrator agent correctly decide *when* to delegate
 to subagents — so a human doesn't have to manage the fan-out by hand?
 
-**Motivation:** Vals AI (Oct 2026) found multi-agent teams burn 1.8–5.1x
-the tokens of a single agent for ~zero quality gain on most coding tasks.
-The waste isn't AI coding — it's *unjudged delegation*. Current
-orchestrators (Claude Code, Cursor, Kiro-class) decide mostly by vibes:
-the model matches the task against subagent `description` fields, and
-without explicit routing rules it "guesses — and often guesses wrong."
-This eval turns delegation judgment into a measurable skill.
+**Motivation:** [Vals AI's Vibe Code Bench study](https://www.vals.ai/blogs/multi-agent-vibe-code-bench)
+compared single agents and teams on 50 full-stack web apps. Teams cost
+1.8–5.1 times as much, and only one of four model/effort comparisons had a
+statistically significant score gain. Those benchmark-specific cost results
+do not establish a general token multiplier or outcomes for other work.
+This eval tests delegation decisions against an explicit policy.
 
 ## Rule under test
 
@@ -33,49 +32,65 @@ to the same file (parallel writes clobber) · explore-first bug with
 unknown location.
 
 Each case: `task`, `should_delegate`, `category`, `rationale`, `expected`.
+The labels express this policy; they are not experimental proof that each
+choice improves task quality, speed, or cost.
+
+## Setup and run
+
+From the repository root, using Python 3.10 or newer:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install 'inspect_ai==0.3.280' pytest
+.venv/bin/python -m pytest evals/delegation-judgment/test_scorer.py
+.venv/bin/inspect eval evals/delegation-judgment/delegation_eval.py --model mockllm/model
+.venv/bin/inspect eval evals/delegation-judgment/delegation_eval.py --model mockllm/model -T agent=always_delegate
+.venv/bin/inspect eval evals/delegation-judgment/delegation_eval.py --model mockllm/model -T agent=never_delegate
+```
+
+Mock runs need no API key. Inspect writes eval logs to `logs/` by default.
 
 ## Scorer
 
-`delegation_scorer()` grades the *decision*, not the work product:
+`delegation_scorer()` grades the decision, not the work product:
 
-1. **Behavioral signal first:** any `spawn_subagent` tool call in the
-   transcript counts as DELEGATE (what it did beats what it said).
-2. **Declared signal:** `DECISION: DELEGATE|SOLO` line (mock solvers).
-3. No signal → INCORRECT (unparseable).
-4. Correct / over-delegation / under-delegation verdicts with the case
-   rationale in the explanation.
+- **Mock solvers** must emit `DECISION: DELEGATE|SOLO`. An ordinary summary
+  without that line is unparseable and scores INCORRECT.
+- **Completed live runs** are graded from tool behavior: any
+  `spawn_subagent` call means DELEGATE; none means SOLO. Declared decision
+  lines cannot override the observed behavior.
+- **Incomplete live runs** score INCORRECT. The solver records normal
+  return with a final model response; cancelled, timed-out, truncated, and
+  filtered runs cannot earn credit merely by avoiding a delegation call.
+  Inspect's `TaskState.completed` alone is insufficient because Inspect
+  also sets it before scoring interrupted samples.
 
-## Verified results (inspect_ai 0.3.280, mockllm, no API key)
+The explanation distinguishes correct, over-delegation, under-delegation,
+and incomplete/unparseable runs, and includes the case rationale.
 
-| Solver | Accuracy | Meaning |
+## Mock controls (inspect_ai 0.3.280, mockllm)
+
+| Solver | Expected accuracy | Meaning |
 |---|---|---|
-| `oracle` | 12/12 (1.000) | Scorer reaches the ceiling; agreement 12/12 |
-| `always_delegate` | 6/12 (0.500) | Fails every SOLO case — over-delegation penalized |
-| `never_delegate` | 6/12 (0.500) | Fails every DELEGATE case — under-delegation penalized |
+| `oracle` | 12/12 (1.000) | Replays each hand label |
+| `always_delegate` | 6/12 (0.500) | Fails every SOLO case |
+| `never_delegate` | 6/12 (0.500) | Fails every DELEGATE case |
 
-Unit tests: `test_scorer.py` — 14/14 pass (decision extraction,
-tool-call precedence, over/under-delegation verdicts, dataset balance).
+`test_scorer.py` covers decision extraction, actual TaskState scoring,
+behavior overriding declarations, interruption handling, dataset balance,
+and over/under-delegation verdicts.
 
-## The improvement loop (why this eval exists)
+## Optional live decision run
 
-1. Run `-T agent=live` with a real model; read *where* it over/under-delegates.
-2. Tighten the delegation policy: the `spawn_subagent` tool description,
-   the orchestrator prompt, cost thresholds (the "delegation ladder").
-3. Re-run. Delegation reasoning improves by measurement, not by hoping
-   the system prompt is wise enough.
+With provider credentials configured and a supported model identifier:
 
-## Friday live-run plan (Oct 16, 2:30–3:30 PM ET slot)
-
-The slot is already reserved for the sandboxed real-agent
-dispatch-boundary test (approval *enforcement*). The delegation eval's
-live solver (`-T agent=live`) is stubbed and ready: a `react()`
-orchestrator with a real `spawn_subagent` tool. It needs a real model:
-
-```
-inspect eval delegation_eval.py --model <model> -T agent=live
+```sh
+.venv/bin/inspect eval evals/delegation-judgment/delegation_eval.py --model <provider/model> -T agent=live
 ```
 
-v1's `spawn_subagent` worker is simulated (the *decision* is what's
-scored); wiring it to a real subagent harness is the defined next step
-after the approval-boundary test lands. Token usage per decision is
-recorded in the eval log for the cost side of delegation ROI.
+The orchestrator calls a **simulated** `spawn_subagent` worker. That worker
+returns a canned result and does not perform the requested coding or
+research. No live-model performance results are reported. A live run can
+measure routing decisions under this policy, but cannot establish actual
+subagent quality, speedup, or total multi-agent cost. Wiring a real worker
+harness and measuring those outcomes is future work.

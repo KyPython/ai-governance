@@ -8,7 +8,7 @@ if ! command -v inspect >/dev/null 2>&1; then
   exit 127
 fi
 if [[ ! -f approval_eval.py ]]; then
-  echo "approval_eval.py missing in $HERE. Extract the entire bundle and retry." >&2
+  echo "approval_eval.py missing in $HERE. Restore the complete repository checkout and retry." >&2
   exit 1
 fi
 mkdir -p logs

@@ -107,9 +107,14 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         return finish("workflow_mismatch")
     if approval_id in trusted["consumed_approval_ids"]:
         return finish("approval_already_consumed")
-    if request.get("idempotency_key") in trusted["used_idempotency_keys"]:
+    idempotency_key = request.get("idempotency_key")
+    approved_key = grant.get("idempotency_key")
+    if any(not isinstance(key, str) or not key.strip()
+           for key in (idempotency_key, approved_key)):
+        return finish("idempotency_key_invalid")
+    if idempotency_key in trusted["used_idempotency_keys"]:
         return finish("idempotency_key_reused")
-    if grant["idempotency_key"] != request.get("idempotency_key"):
+    if approved_key != idempotency_key:
         return finish("idempotency_key_mismatch")
 
     try:
@@ -122,5 +127,9 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
 
     # This is the ONLY point at which an effect can execute. The transport is inert.
     sink.send(intent_hash=actual_hash, approval_id=approval_id,
-              idempotency_key=request["idempotency_key"])
+              idempotency_key=idempotency_key)
+    # Keep sequential calls sharing this trusted state from replaying the effect.
+    # Production storage must make dispatch and consumption atomic under concurrency.
+    trusted["consumed_approval_ids"].append(approval_id)
+    trusted["used_idempotency_keys"].append(idempotency_key)
     return finish("dispatched", actual_hash)

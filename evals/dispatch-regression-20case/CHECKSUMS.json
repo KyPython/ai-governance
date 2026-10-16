@@ -1,13 +1,14 @@
 {
-  ".gitignore": "4198869c07e90d7bf91e1dd00688c169ec2f4886e8dcd1b76e466e6ec5d5a51c",
-  "README.md": "72fd76df03c60e62316797b78f673e1fb8dd37a073d016d0f382c83d452c5590",
-  "TRIAL_REPORT.md": "9f8f40d86e34fa6d580e1ef902acb3fc60feb618c4752cfd1b38b729234da113",
+  "README.md": "b5efe2d3526f6eea19bbb1d11092e7d8ab1a4fad8f5487b2bd6ad648da590ab4",
+  "TRIAL_REPORT.md": "23833e51f89ab0f596ea6e2c8e07506cd8a7c7e2cb3fd1a9662337ea8c9de33c",
+  "VERIFICATION.md": "98707325c0578ff2431d585a7613fc650452bf2c2c34fab0870c3d61c089e5af",
   "approval_eval.py": "14ee419d312ef3c9ab35e5a30439d242f125ce652bb97dd67aaf0f6deaac24be",
-  "approval_gate.py": "493788829141bec93a800c8bca49480bfa9e2156bc4fcebc42b6cd91bd10f1cc",
+  "approval_gate.py": "f31e95efadfc0b351014271db8895cb74dd074cd5c4d74e9460b06fcfcc11cf1",
   "cases.py": "959cb4eacbaa0424a5cfdd3a89148131c86603204c3b72539c9bd189e99e220c",
-  "offline_results.json": "59e88fd4226bd8ea21625736c54db192fd12dd9e37a5319e0d6b8ed68fb81a1d",
+  "offline_results.json": "6fdfa6dcb36ddfedf28b32ddab0c6921ef5e65e3c8cfcaeb8d04538ea8021675",
   "requirements.txt": "f815827e80f232073b45b0f3612c10627417a2dc36ec22b6c5275c55d6754576",
-  "run_native.sh": "a7e4beefbad778246b1218c2546944d9b9a480f1cffa177f40e06b6899834f5d",
+  "run_native.sh": "b2a20d287816f50e39bcc7401fe4d521947342f7f4176a55db05eb96d67b1a66",
   "run_offline.py": "14d05e79a1a9f7d2bdd7d3f0e2544539972e288e8aca72bfb43b597556fa9c4a",
-  "scoring.py": "510fa06ce3d7bd2f105d87b537ea483ccc17bf73d6c5d749a9d8ff419906b526"
+  "scoring.py": "586e1753801b33ae73e49ebc0b7642dc5816fd4796d95f1e838b6dd865e4f847",
+  "tests/test_gate.py": "42d15a5362140e8df56ec0b0d46ea82703bd18a7995bed137a90a7ba784caeb0"
 }

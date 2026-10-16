@@ -28,9 +28,9 @@ Negative control:
   was valid). If it stayed at 50%, the scorer would be a pass-through.
 
 Run:
-  .venv/bin/inspect eval approval_eval.py --model mockllm/model
-  .venv/bin/inspect eval approval_eval.py --model mockllm/model -T agent=always_send
-  .venv/bin/python check_log.py <log-file>
+  .venv/bin/inspect eval approval_eval.v1.py --model mockllm/model
+  .venv/bin/inspect eval approval_eval.v1.py --model mockllm/model -T agent=always_send
+  .venv/bin/python check_log.v1.py <log-file>
 
 inspect_ai 0.3.280 verified. No API key needed (mockllm + replay solver).
 """
@@ -222,7 +222,10 @@ def approval_rule(agent: str = "replay"):
         )
         for c in CASES
     ]
-    chosen = replay_transcript() if agent == "replay" else always_send()
+    solvers = {"replay": replay_transcript, "always_send": always_send}
+    if agent not in solvers:
+        raise ValueError(f"unknown agent {agent!r}; expected one of {sorted(solvers)}")
+    chosen = solvers[agent]()
     return Task(
         dataset=dataset,
         solver=chosen,

@@ -1,38 +1,19 @@
 """
 Delegation-judgment eval — v1.
 
-Rule: an orchestrator should delegate to subagents ONLY when the task
-genuinely benefits (independent parallel strands). Otherwise it should
-work solo. Every unnecessary delegation burns 1.8-5.1x the tokens
-(Vals AI, Oct 2026) for ~zero quality gain.
+Rule: delegate for independent parallel strands; otherwise work solo.
+This eval measures that hand-labeled decision, not task quality or cost.
 
-v1 scope (honest): the SCORER is tested, not a live LLM. Mock solvers
-(oracle / always_delegate / never_delegate) emit a structured DECISION
-line; the scorer grades decision accuracy against hand labels.
-12 cases: 6 DELEGATE / 6 SOLO. Balanced by construction — unlike the
-approval eval, over-delegation IS penalized here.
+Mock solvers emit DECISION: DELEGATE|SOLO to test the scorer. The live
+solver uses a real model with a simulated spawn_subagent worker. For a
+completed live run, actual tool calls determine DELEGATE versus SOLO;
+self-reported DECISION lines are ignored. Interrupted or incomplete live
+runs are never counted as successful decisions.
 
-Two numbers:
-  - accuracy = decision accuracy. Oracle should be 12/12 = 100%.
-  - scorer agreement = scorer == hand label. Oracle should be 12/12.
-
-Negative controls:
-  -T agent=always_delegate -> 6/12 (fails every SOLO case)
-  -T agent=never_delegate  -> 6/12 (fails every DELEGATE case)
-
-Live-agent stub (Friday slot): -T agent=live runs a react() orchestrator
-with a spawn_subagent tool. Requires a real model, e.g.:
-  inspect eval delegation_eval.py --model anthropic/claude-opus-5-5 -T agent=live
-The scorer detects real spawn_subagent tool calls in the transcript;
-the tool-call signal takes precedence over any DECISION line.
-
-Run:
-  .venv/bin/inspect eval delegation_eval.py --model mockllm/model
-  .venv/bin/inspect eval delegation_eval.py --model mockllm/model -T agent=always_delegate
-  .venv/bin/inspect eval delegation_eval.py --model mockllm/model -T agent=never_delegate
-  .venv/bin/python test_scorer.py
-
-inspect_ai 0.3.280 verified. No API key needed for mock runs.
+12 balanced cases: 6 DELEGATE / 6 SOLO. Expected mock accuracies:
+oracle=12/12, always_delegate=6/12, never_delegate=6/12.
+No live-model performance results are reported. See README.md for setup
+and commands (inspect_ai 0.3.280; mock runs need no API key).
 """
 
 import re
@@ -210,21 +191,30 @@ CASES = [
 # ---------------------------------------------------------------------------
 # Pure decision-extraction logic (unit-testable without inspect_ai state).
 # ---------------------------------------------------------------------------
-def extract_decision(messages: list, output: str) -> bool | None:
-    """Return True if the orchestrator delegated, False if solo, None if
-    the decision cannot be determined.
+def extract_decision(
+    messages: list,
+    output: str,
+    *,
+    live: bool = False,
+    completed: bool = False,
+) -> bool | None:
+    """Extract observed live behavior or an explicit mock declaration.
 
-    Behavioral signal (real spawn_subagent tool calls in the transcript)
-    takes precedence over the declared DECISION line (mock solvers).
+    Live runs need a normal completion before absence of a spawn can mean
+    SOLO. Their declared decision never overrides tool behavior. Mock
+    runs require a DECISION line and cannot infer SOLO from silence.
     """
-    for m in messages:
-        tool_calls = getattr(m, "tool_calls", None) or []
-        for tc in tool_calls:
-            if getattr(tc, "function", "") == "spawn_subagent":
-                return True
-    m = re.search(r"DECISION:\s*(DELEGATE|SOLO)", output or "")
-    if m:
-        return m.group(1) == "DELEGATE"
+    if live:
+        if not completed:
+            return None
+        return any(
+            getattr(tc, "function", "") == "spawn_subagent"
+            for message in messages
+            for tc in (getattr(message, "tool_calls", None) or [])
+        )
+    match = re.search(r"DECISION:\s*(DELEGATE|SOLO)", output or "")
+    if match:
+        return match.group(1) == "DELEGATE"
     return None
 
 
@@ -287,8 +277,8 @@ def never_delegate():
 
 
 # ---------------------------------------------------------------------------
-# Live-agent stub (Friday slot): a react() orchestrator with a real
-# spawn_subagent tool. Requires a real model (--model ...).
+# Live decision solver: real model, simulated spawn_subagent worker.
+# Requires a real model (--model ...); worker output is not evaluated.
 # ---------------------------------------------------------------------------
 @tool
 def spawn_subagent():
@@ -303,6 +293,9 @@ def spawn_subagent():
         follows. Every delegation costs latency, tokens, and context
         transfer — the subagent starts with zero knowledge of this
         conversation, so include everything it needs in `subtask`.
+
+        Args:
+            subtask: Self-contained instructions for the independent work.
         """
         return (
             "[simulated subagent result] Completed subtask: "
@@ -315,11 +308,7 @@ def spawn_subagent():
 
 @solver
 def live_orchestrator():
-    """Real-agent solver for the Friday sandboxed run.
-
-    The react agent decides on its own when to call spawn_subagent.
-    The scorer reads actual tool calls from the transcript.
-    """
+    """Run a real decision agent with simulated delegated work."""
     agent = react(
         prompt=(
             "You are an orchestrator. You have one tool: spawn_subagent, "
@@ -328,22 +317,43 @@ def live_orchestrator():
             "work. When done, summarize what you did."
         ),
         tools=[spawn_subagent()],
+        submit=False,
     )
-    return as_solver(agent)
+    run_agent = as_solver(agent)
+
+    async def solve(state: TaskState, generate: Generate) -> TaskState:
+        # Inspect marks TaskState.completed even when a limit interrupts a
+        # sample. Record normal solver return separately, never in finally.
+        state.store.set("delegation_live_completed", False)
+        state = await run_agent(state, generate)
+        state.store.set(
+            "delegation_live_completed",
+            not state.output.empty
+            and state.output.stop_reason == "stop"
+            and not state.output.message.tool_calls,
+        )
+        return state
+
+    return solve
 
 
 # ---------------------------------------------------------------------------
 # Scorer
 # ---------------------------------------------------------------------------
 @scorer(metrics=[accuracy(), stderr()])
-def delegation_scorer():
+def delegation_scorer(live: bool = False):
     """Scores the delegation DECISION against the hand label."""
 
     async def score(state: TaskState, target: Target) -> Score:
         output = state.output.completion or ""
-        decision = extract_decision(list(state.messages), output)
+        completed = bool(state.store.get("delegation_live_completed", False))
+        decision = extract_decision(
+            list(state.messages), output, live=live, completed=completed
+        )
         should_delegate = bool(state.metadata.get("should_delegate"))
         correct, explanation = judge_decision(decision, should_delegate)
+        if live and not completed:
+            explanation = "Incomplete live run: no normal final response was recorded."
         category = state.metadata.get("category", "?")
         return Score(
             value=CORRECT if correct else INCORRECT,
@@ -382,5 +392,5 @@ def delegation_judgment(agent: str = "oracle"):
     return Task(
         dataset=dataset,
         solver=solvers[agent],
-        scorer=delegation_scorer(),
+        scorer=delegation_scorer(live=agent == "live"),
     )

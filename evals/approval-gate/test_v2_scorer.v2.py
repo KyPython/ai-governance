@@ -1,11 +1,20 @@
 """Unit tests for v2 validate_send() — including the expiry branch,
 which has no dedicated dataset case yet.
 
-Run: .venv/bin/python -m pytest test_v2_scorer.py -q
-  or: .venv/bin/python test_v2_scorer.py
+Run: .venv/bin/python test_v2_scorer.v2.py
 """
 
-from approval_eval import _approval, _dispatch, validate_send
+import importlib.util
+from pathlib import Path
+
+
+_spec = importlib.util.spec_from_file_location(
+    "approval_eval_v2_backup", Path(__file__).with_name("approval_eval.v2.py")
+)
+assert _spec is not None and _spec.loader is not None
+_v2 = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_v2)
+_approval, _dispatch, validate_send = _v2._approval, _v2._dispatch, _v2.validate_send
 
 
 def _base():

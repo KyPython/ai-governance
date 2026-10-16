@@ -1,44 +1,61 @@
-# Independent verification — 20-case dispatch suite
+# Verification — 20-case dispatch suite
 
-Provenance: `workspace/user/files/inspect_approval_trial_fixed__1.zip`
-uploaded 2026-10-14 ~01:07 ET, plus `workspace/user/files/cases.py`
-(which is byte-identical to the zip's `cases.py`).
-Preserved as-is at `workspace/inspect-evals/twenty-case-dispatch/`.
-No files modified; this note is additive only.
+## Current source verification (2026-10-16)
 
-## Checksums
-All 12 files in `CHECKSUMS.json` verified OK (sha256) against the
-extracted bundle on 2026-10-14.
+The unchanged benchmark contains 20 fixtures: 2 ALLOW and 18 BLOCK. Supplemental
+regressions live in `tests/test_gate.py`; they are not extra benchmark examples.
 
-## Native inspect_ai run (this VM, independent of the Mac run)
-- Command: `inspect eval ./approval_eval.py --model none --log-dir ./logs`
-  (same as the bundle's `run_native.sh`), inspect_ai 0.3.280, no API key.
-- Log: `logs/2026-10-14T05-07-50-00-00_approval-before-send_KVdLu9PKFceKbgwA4TiRyC.eval`
-- Result: **20/20 pass, accuracy 1.000**, status success, 14 → 20 samples.
-- Per-sample check from the log: every case's scorer verdict matches its
-  hand-specified expected decision AND reason; 0 unauthorized ALLOWs;
-  2 allowed dispatches (A01, A02).
-- Cross-check: the user's Mac terminal transcript reports the same
-  outcome (20/20, accuracy 1.0, ~1s). Same code (checksums OK), same result.
+- `PYTHONPATH=. python -m unittest discover -s tests -v`: **12/12 passed**.
+- `python run_offline.py --output offline_results.json`: **20/20 passed**, with
+  2 authorized simulated dispatches and 0 dispatches across the 18 blocked cases.
+- `bash /absolute/path/to/ai-governance/evals/dispatch-regression-20case/run_native.sh
+  --log-dir /tmp/ai-governance-227-dispatch-logs`, invoked from `/tmp` with
+  `inspect-ai` **0.3.280**: **20/20 passed**, accuracy **1.000**, status success.
+  No model calls, API keys, or network dispatches were used. The native receipt
+  was inspected locally; generated `.eval` logs are not included in this bundle.
 
-## Unit tests
-`python -m unittest tests.test_gate`: **5/5 pass**, including the two
-negative canaries (forged success without dispatch; unauthorized dispatch)
-and fail-closed checks (unknown envelope field, stale preflight revision).
+`CHECKSUMS.json` lists all **12 tracked suite files other than the manifest
+itself**, including this note and `tests/test_gate.py`. Paths are relative to
+this directory; there is no suite-local `.gitignore`. The current manifest was
+regenerated after the code, documentation, and offline receipt changed.
 
-## Scope (unchanged from the bundle's own TRIAL_REPORT.md)
-- Tests the local reference approval gate + inert simulated transport.
-- Does NOT test a live model, a deployed agent, EffectProof, or BuildLogic.
-- 18 BLOCK / 2 ALLOW — imbalanced by design; an overly restrictive
-  gate would still score well. More ALLOW cases would strengthen it.
+To verify the manifest from this directory:
 
-## Relation to the canonical 14-case eval
-Canon stays `workspace/inspect-evals/first-approval-eval/approval_eval.py`
-(v2, transcript-replay scorer). This 20-case suite is preserved separately
-as additional regression coverage — especially its observed-dispatch
-scoring (it grades recorded side effects, not a claimed ACTION line).
-No cases merged into canon; see the v2.1 proposal in the canon README
-for the genuinely new categories (forged approval, bot approver,
-future-dated, channel/sender change, CC addition, workflow identity,
-policy revision, grant consumed, idempotency reuse, preflight failure,
-hostile-note resistance, expiry dataset case).
+```bash
+python - <<'PYTHON'
+import hashlib
+import json
+from pathlib import Path
+
+manifest = json.loads(Path("CHECKSUMS.json").read_text())
+for name, expected in manifest.items():
+    actual = hashlib.sha256(Path(name).read_bytes()).hexdigest()
+    assert actual == expected, name
+print(f"Verified {len(manifest)} files")
+PYTHON
+```
+
+## Historical recorded receipts (2026-10-14)
+
+The original import was recorded as originating in
+`inspect_approval_trial_fixed__1.zip`, plus a byte-identical standalone
+`cases.py`. Neither that archive nor its external execution logs are included
+here, so those original provenance claims are historical records rather than
+newly reproduced evidence.
+
+The imported notes recorded an offline result of 20/20, an independent native
+Inspect 0.3.280 result of 20/20, and 5/5 unit tests. A separate initial trial
+report said native Inspect was unavailable in its environment. These describe
+different historical runs. Their results and original hashes do not certify
+the revised source; the current checks and regenerated receipt above do.
+
+## Scope
+
+These checks exercise a local reference approval gate and inert simulated
+transport, with no deployed agent or model. Sequential calls sharing trusted
+state consume the approval and idempotency key after a successful simulated
+dispatch. Atomic consumption under concurrency and real transport failure
+recovery require production infrastructure and are not established here.
+
+This suite remains separate from `../approval-gate/`; no cases were
+merged between suites.
