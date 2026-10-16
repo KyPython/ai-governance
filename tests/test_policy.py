@@ -19,7 +19,7 @@ POLICY = step_script("- name: Governance policy checks", "\n  security:")
 TEST_PARSER = step_script("- name: Parse test results (scorecard)", "\n  policy:")
 SCORECARD = step_script("- name: Scorecard (machine-readable summary)", "\n      - name: Upload scorecard artifact")
 TEMPLATE = (ROOT / "templates/ai-governance.yml").read_text()
-ROLES = ROOT / "roles.yml"
+ROLES_FIXTURE = "version: 1\nowner: KyPython\nspec_paths:\n  - specs/\n  - .kiro/specs/\nroles:\n  spec-author:\n    identities:\n      - KyPython\n      - kiro-agent[bot]\n  coder:\n    identities:\n      - cursor[bot]\n      - cursoragent\n      - kiro-agent[bot]\n      - codex\n      - chatgpt-codex-connector[bot]\n"
 
 SPEC = """# Requirements: demo
 ### Requirement 1: Demo (DEMO-1)
@@ -41,7 +41,9 @@ class Repo:
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         sh(self.dir, "git", "init", "-q", "-b", "main")
-        files = {"AGENTS.md": "<!-- AI-GOVERNANCE:v1 -->\n", ".github/CODEOWNERS": "* @KyPython\n",
+        self.roles_file = self.dir / ".test-roles.yml"
+        self.roles_file.write_text(ROLES_FIXTURE)
+        files = {".gitignore": ".test-roles.yml\\n", "AGENTS.md": "<!-- AI-GOVERNANCE:v1 -->\n", ".github/CODEOWNERS": "* @KyPython\n",
                  "package.json": json.dumps({"name": "x", "scripts": {"test": "node --test"}, "dependencies": {"a": "1.0.0"}}, indent=2),
                  "src/app.js": "export const x = 1;\n"}
         files.update(base_files or {})
@@ -64,13 +66,13 @@ class Repo:
         return sh(self.dir, "git", "rev-parse", "HEAD")
 
     def policy(self, body="Closes #1\n\nSpec: specs/demo", title="feat(app): change", head_ref="feature",
-               author=KY, committer=None, opener="KyPython", repo="KyPython/demo", roles=ROLES, output=None):
+               author=KY, committer=None, opener="KyPython", repo="KyPython/demo", roles=None, output=None, head_sha=None):
         head = self.commit("change", author, committer)
         summary = self.dir / ".summary"
         env = dict(os.environ, EVENT_NAME="pull_request", PR_TITLE=title, PR_BODY=body, PR_BASE_SHA=self.base,
-                   PR_HEAD_SHA=head, PR_HEAD_REF=head_ref, PUSH_BEFORE="", PUSH_AFTER=head, REQUIRE_ISSUE="false",
+                   PR_HEAD_SHA=head if head_sha is None else head_sha, PR_HEAD_REF=head_ref, PUSH_BEFORE="", PUSH_AFTER=head, REQUIRE_ISSUE="false",
                    ENFORCE_TITLE="true", STC_MODE="off", BASELINE_MODE="changed", PR_AUTHOR=opener, REPO=repo,
-                   ROLES_FILE=str(roles), GITHUB_STEP_SUMMARY=str(summary), GITHUB_OUTPUT=str(output or os.devnull))
+                   ROLES_FILE=str(self.roles_file if roles is None else roles), GITHUB_STEP_SUMMARY=str(summary), GITHUB_OUTPUT=str(output or os.devnull))
         p = subprocess.run(["python3", "-c", POLICY], cwd=self.dir, env=env, capture_output=True, text=True)
         summary.unlink(missing_ok=True)
         return p.returncode, p.stdout + p.stderr
@@ -232,6 +234,51 @@ class RoleGate(Base):
         names = re.findall(r"(?m)^      ([\w-]+):$", inputs)
         self.assertIn("require-tests", names)
         self.assertFalse([n for n in names if "spec" in n or "role" in n], names)
+
+    def test_GATE_3_4_missing_coder_list_fails(self):
+        r = self.repo()
+        r.roles_file.write_text(ROLES_FIXTURE.split("  coder:", 1)[0])
+        status, out = r.policy(body="Relates to #2")
+        self.assertEqual(status, 1, out); self.assertIn("roles.coder.identities", out)
+
+    def test_GATE_3_4_empty_coder_list_fails(self):
+        r = self.repo()
+        r.roles_file.write_text(ROLES_FIXTURE.split("  coder:", 1)[0] + "  coder:\n    identities:\n")
+        status, out = r.policy(body="Relates to #2")
+        self.assertEqual(status, 1, out); self.assertIn("roles.coder.identities", out)
+
+    def test_GATE_3_4_scalar_coder_list_fails(self):
+        r = self.repo()
+        r.roles_file.write_text(ROLES_FIXTURE.split("  coder:", 1)[0] + "  coder:\n    identities: cursor[bot]\n")
+        status, out = r.policy(body="Relates to #2")
+        self.assertEqual(status, 1, out); self.assertIn("roles.coder.identities", out)
+
+    def test_GATE_3_4_malformed_coder_list_fails(self):
+        r = self.repo()
+        r.roles_file.write_text(ROLES_FIXTURE.split("  coder:", 1)[0] + "  coder:\n    identities: {}\n")
+        status, out = r.policy(body="Relates to #2")
+        self.assertEqual(status, 1, out); self.assertIn("roles.coder.identities", out)
+
+    def test_GATE_3_7_unknown_code_opener_fails(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "// DEMO-1.1\n"})
+        status, out = r.policy(opener="unknown-bot")
+        self.assertEqual(status, 1, out); self.assertIn("PR opener @unknown-bot", out)
+
+    def test_GATE_3_7_unknown_code_author_fails(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "// DEMO-1.1\n"})
+        status, out = r.policy(author=("unknown", "unknown@example.com"))
+        self.assertEqual(status, 1, out); self.assertIn("author unknown", out)
+
+    def test_GATE_3_7_unknown_code_committer_fails(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "// DEMO-1.1\n"})
+        status, out = r.policy(author=CURSOR, committer=("unknown", "unknown@example.com"), opener="cursor[bot]")
+        self.assertEqual(status, 1, out); self.assertIn("committer unknown", out)
+
+    def test_GATE_3_7_unverifiable_commit_history_fails(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "// DEMO-1.1\n"})
+        status, out = r.policy(author=CURSOR, opener="cursor[bot]", head_sha="deadbeef")
+        self.assertEqual(status, 1, out); self.assertIn("cannot verify PR commit history", out)
+
 
 
 class KiroAsCoder(Base):

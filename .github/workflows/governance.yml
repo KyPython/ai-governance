@@ -347,12 +347,25 @@ jobs:
                   with urllib.request.urlopen(roles_src, timeout=20) as r:
                       roles_text = r.read().decode("utf-8")
               roles = parse_roles(roles_text)
+              role_defs = roles.get("roles")
+              owner_value = roles.get("owner")
+              paths = roles.get("spec_paths")
+              if not isinstance(owner_value, str) or not owner_value.strip():
+                  raise ValueError("roles.yml requires a nonempty owner")
+              if not isinstance(paths, list) or not paths or any(
+                  not isinstance(p, str) or not p.strip().strip("/") for p in paths
+              ):
+                  raise ValueError("roles.yml requires a nonempty spec_paths list")
               def ids_of(role):
-                  return {i.lower() for i in (roles.get("roles", {}).get(role, {}).get("identities") or [])}
-              SPEC_AUTHORS, CODERS, OWNER = ids_of("spec-author"), ids_of("coder"), (roles.get("owner") or "").lower()
-              spec_dirs = [d.strip().strip("/") for d in roles.get("spec_paths") or [] if d.strip()]
-              if not SPEC_AUTHORS or not OWNER or not spec_dirs:
-                  raise ValueError("roles.yml needs owner, spec_paths and roles.spec-author.identities")
+                  data = role_defs.get(role) if isinstance(role_defs, dict) else None
+                  raw = data.get("identities") if isinstance(data, dict) else None
+                  if not isinstance(raw, list) or not raw or any(
+                      not isinstance(v, str) or not v.strip() for v in raw
+                  ):
+                      raise ValueError(f"roles.yml requires roles.{role}.identities as a nonempty list of strings")
+                  return {v.strip().lower() for v in raw}
+              SPEC_AUTHORS, CODERS, OWNER = ids_of("spec-author"), ids_of("coder"), owner_value.strip().lower()
+              spec_dirs = [d.strip().strip("/") for d in paths]
               ok(f"role map loaded from {roles_src}: spec authors = {', '.join(sorted(SPEC_AUTHORS))}")
           except Exception as e:
               roles = None; SPEC_AUTHORS, CODERS, OWNER = set(), set(), ""
@@ -577,23 +590,38 @@ jobs:
                       else:
                           err("Traceability: code changed but no test was added or changed. Add or update a test that cites the acceptance criterion IDs it verifies.")
 
-          # 9. ROLES. Only the spec-author role (roles.yml) may change spec paths. Checks the PR opener and the
-          #    author and committer of every commit in the PR. Git identities are self-declared and agents that
-          #    push with Ky's token appear as KyPython, so this proves declared identities only.
+          # 9. Role gate: declared identities, not cryptographic identity verification.
           if is_pr and roles is not None:
               head = os.environ.get("PR_HEAD_SHA", "")
-              log = git("log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", f"{base}..{head}") if base and head else ""
+              opener = os.environ.get("PR_AUTHOR", "").strip()
+              people = []
+              if opener:
+                  people.append((f"PR opener @{opener}", {opener.lower()}))
+              else:
+                  err("Role gate: PR opener identity missing; failing closed.")
+              history = None
+              if not have_range or not base or not head:
+                  err("Role gate: cannot verify PR commit history/range; failing closed.")
+              else:
+                  r = subprocess.run(["git", "log", "--format=%H%x1f%an%x1f%ae%x1f%cn%x1f%ce", f"{base}..{head}"],
+                                     capture_output=True, text=True)
+                  if r.returncode or not r.stdout.strip():
+                      err("Role gate: cannot verify PR commit history; failing closed.")
+                  else:
+                      history = r.stdout
               def ident(name, email):
                   m = re.match(r"^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$", email or "", re.I)
                   return {x.lower() for x in (name, email, m.group(1) if m else None) if x}
-              people = []  # (label, identity set)
-              if os.environ.get("PR_AUTHOR"):
-                  people.append((f"PR opener @{os.environ['PR_AUTHOR']}", {os.environ["PR_AUTHOR"].lower()}))
-              for line in log.splitlines():
-                  sha, an, ae, cn, ce = (line.split("\x1f") + [""] * 5)[:5]
-                  people.append((f"{sha[:7]} author {an} <{ae}>", ident(an, ae)))
-                  if ce.lower() != "noreply@github.com":  # GitHub web-flow committer = platform, not a person
-                      people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
+              if history is not None:
+                  for line in history.splitlines():
+                      parts = line.split("\x1f")
+                      if len(parts) != 5 or not all(parts):
+                          err("Role gate: malformed PR commit identity record; failing closed.")
+                          continue
+                      sha, an, ae, cn, ce = parts
+                      people.append((f"{sha[:7]} author {an} <{ae}>", ident(an, ae)))
+                      if ce.lower() != "noreply@github.com":
+                          people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
               def role_of(ids):
                   if ids & SPEC_AUTHORS: return "spec-author"
                   if ids & CODERS: return "coder"
@@ -603,15 +631,22 @@ jobs:
                   if bad:
                       err("Role gate: only the spec-author role (" + ", ".join(sorted(SPEC_AUTHORS)) + ") may change spec paths. "
                           "Not spec authors: " + "; ".join(bad) + ". Coders implement existing specs; Kiro writes them.")
-                  else:
-                      ok("role gate: every PR opener/commit identity that touched specs is a spec author (git identities are self-declared; "
-                         "commits pushed with KyPython's token count as KyPython)")
+                  elif history is not None and opener:
+                      ok("role gate: spec changes have allowed declared identities (self-declared, not verified)")
               if os.environ.get("REPO") == "KyPython/ai-governance" and "roles.yml" in changed:
                   bad = [label for label, ids in people if OWNER not in ids]
                   if bad:
                       err(f"Role gate: roles.yml may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
-                  else:
-                      ok("role gate: roles.yml changed by the owner identity only")
+                  elif history is not None and opener:
+                      ok("role gate: role map changes declare owner identity")
+              if code:
+                  authorized = CODERS | {OWNER}
+                  bad = [label for label, ids in people if not ids & authorized]
+                  if bad:
+                      err("Role gate: code paths require coder or owner identity for PR opener, author and committer. "
+                          "Not authorized: " + "; ".join(bad))
+                  elif history is not None and opener:
+                      ok("role gate: code changes have allowed declared identities (self-declared, not verified)")
               coders = sorted({label for label, ids in people if role_of(ids) == "coder"})
               if coders:
                   print("Coder identities in this PR: " + "; ".join(coders))
