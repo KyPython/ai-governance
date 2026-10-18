@@ -47,7 +47,7 @@ from inspect_ai.dataset import Sample
 from inspect_ai.scorer import choice
 from inspect_ai.solver import multiple_choice
 
-DATA = Path(__file__).parent / "data" / "arfbench-qa.csv"
+DATA = Path(__file__).parent / "data" / "arfbench-qa.csv.gz"
 TS_CACHE = Path(__file__).parent / "data" / "ts"
 
 # Fine -> coarse; first resolution with <= TS_MAX_ROWS wins.
@@ -66,7 +66,9 @@ V1_NOTE = (
 
 
 def _load_rows() -> list[dict]:
-    with open(DATA, newline="", encoding="utf-8") as f:
+    import gzip
+
+    with gzip.open(DATA, "rt", newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
