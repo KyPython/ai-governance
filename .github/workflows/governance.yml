@@ -226,7 +226,7 @@ jobs:
 
       - name: Evaluate all eight dimensions for the declared scope
         if: inputs.system-quality-definition != ''
-        uses: ./.github/actions/system-quality
+        uses: KyPython/ai-governance/.github/actions/system-quality@5dcfb5d6d88a26c7a142b459b83df17cc6b2e590
         with:
           definition: ${{ inputs.system-quality-definition }}
 

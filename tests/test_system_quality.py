@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "scripts" / "system_quality.py"
 SPEC = importlib.util.spec_from_file_location("system_quality", SOURCE)
@@ -246,9 +247,15 @@ class EvidenceTests(unittest.TestCase):
         for age in (-1,-3600,90000):
             with self.subTest(age=age):
                 assessment=self.run_checks()
-                assessment["recorded_at"]=(dt.datetime.now(dt.timezone.utc)-dt.timedelta(seconds=age)).isoformat()
+                fixed_clock=dt.datetime.now(dt.timezone.utc)
+                class FrozenDateTime(dt.datetime):
+                    @classmethod
+                    def now(cls,tz=None):
+                        return fixed_clock if tz else fixed_clock.replace(tzinfo=None)
+                assessment["recorded_at"]=(fixed_clock-dt.timedelta(seconds=age)).isoformat()
                 self.save_assessment(assessment)
-                with self.assertRaises(quality.QualityError):self.validate()
+                with patch.object(quality.dt,"datetime",FrozenDateTime):
+                    with self.assertRaises(quality.QualityError):self.validate()
 
     def test_missing_timezone_is_rejected(self):
         assessment=self.run_checks()
