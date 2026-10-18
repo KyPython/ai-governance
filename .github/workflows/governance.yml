@@ -67,6 +67,14 @@ on:
         description: "auto = required when .systems-thinking/contracts/ exists; required; off"
         type: string
         default: "auto"
+      system-quality-definition:
+        description: Project-relative eight-dimension definition; opt in with run-quality true.
+        type: string
+        default: ""
+      prerequisite-result:
+        description: Actual needs result of an external required validation job; only success is accepted.
+        type: string
+        default: "success"
     outputs:
       verdict:
         description: "pass or fail"
@@ -141,7 +149,21 @@ jobs:
             python -m pip install --upgrade pip
             if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
             if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-            if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || pip install -e . || true; fi
+            if [ -f pyproject.toml ]; then
+              # A tool-only pyproject is not an installable project. Packaging
+              # failures in a declared project must stop this job.
+              install_target=$(python - <<'PY'
+          import pathlib, tomllib
+          config = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          installable = "project" in config or "build-system" in config or "poetry" in config.get("tool", {})
+          if installable:
+              print(".[dev]" if "dev" in config.get("project", {}).get("optional-dependencies", {}) else ".")
+          PY
+              )
+              if [ -n "$install_target" ]; then python -m pip install -e "$install_target"; fi
+            elif [ -f setup.py ] || [ -f setup.cfg ]; then
+              python -m pip install -e .
+            fi
             pip install ruff mypy pytest
             uses_tool() { grep -qs "$1" pyproject.toml setup.cfg requirements*.txt "$2" 2>/dev/null; }
             if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
@@ -195,6 +217,28 @@ jobs:
           echo "Running: ${EXTRA_COMMAND}"
           bash -c "${EXTRA_COMMAND}"
           echo "- extra: \`${EXTRA_COMMAND}\` passed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Python for scoped evidence
+        if: inputs.system-quality-definition != '' && steps.detect.outputs.pm != 'python'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Evaluate all eight dimensions for the declared scope
+        if: inputs.system-quality-definition != ''
+        uses: ./.github/actions/system-quality
+        with:
+          definition: ${{ inputs.system-quality-definition }}
+
+      - name: Retain scoped evidence including failures
+        if: always() && inputs.system-quality-definition != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: system-quality-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: .quality-results/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
   policy:
     name: policy
@@ -436,10 +480,12 @@ jobs:
           POLICY: ${{ needs.policy.result }}
           SECRETS: ${{ needs.secret-scan.result }}
           RUN_QUALITY: ${{ inputs.run-quality }}
+          SYSTEM_QUALITY_DEFINITION: ${{ inputs.system-quality-definition }}
+          PREREQUISITE_RESULT: ${{ inputs.prerequisite-result }}
         run: |
           echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS}"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
-          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ]; then
+          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ] && [ -z "$SYSTEM_QUALITY_DEFINITION" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ] && [ "$PREREQUISITE_RESULT" = "success" ]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "verdict=fail" >> "$GITHUB_OUTPUT"

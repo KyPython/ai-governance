@@ -14,3 +14,4 @@ jobs:
     uses: ./.github/workflows/governance.yml
     with:
       require-tests: false
+      system-quality-definition: .quality/system.json
