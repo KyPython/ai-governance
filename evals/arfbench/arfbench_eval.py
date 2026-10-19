@@ -43,7 +43,7 @@ import urllib.request
 from pathlib import Path
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import Sample
+from inspect_ai.dataset import MemoryDataset, Sample
 from inspect_ai.scorer import choice
 from inspect_ai.solver import multiple_choice
 
@@ -288,7 +288,15 @@ def arfbench(
             raise ValueError(f"No rows at difficulty {want!r}")
     if limit is not None:
         rows = rows[: int(limit)]
-    dataset = [_to_sample(r, series_context) for r in rows]
+    dataset = MemoryDataset([_to_sample(r, series_context) for r in rows])
+    # Hack-pass 2026-10-19: the upstream CSV lists the correct answer first
+    # 61.7% of the time, and multiple_choice() does not shuffle — so an
+    # "always pick A" agent scored 61.7% with zero reasoning. Datadog's own
+    # harness shuffles options; we do the same here. Fixed seed keeps runs
+    # reproducible. Residual note: even shuffled, no-reasoning heuristics
+    # (longest choice, max question-overlap) still beat chance ~33% vs ~24%,
+    # which is inherent distractor weakness in the questions, not the harness.
+    dataset.shuffle_choices(seed=42)
     return Task(
         dataset=dataset,
         solver=multiple_choice(),
