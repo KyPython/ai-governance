@@ -38,12 +38,14 @@ No API key needed for mockllm validation.
 """
 
 import csv
+import hashlib
 import json
+import random
 import urllib.request
 from pathlib import Path
 
 from inspect_ai import Task, task
-from inspect_ai.dataset import MemoryDataset, Sample
+from inspect_ai.dataset import Sample
 from inspect_ai.scorer import choice
 from inspect_ai.solver import multiple_choice
 
@@ -67,8 +69,17 @@ V1_NOTE = (
 
 def _load_rows() -> list[dict]:
     import gzip
+    import base64
+    import io
 
-    with gzip.open(DATA, "rt", newline="", encoding="utf-8") as f:
+    raw = DATA.read_bytes()
+    if raw[:2] != b"\x1f\x8b":
+        # The committed artifact is base64 text (the push path can't carry
+        # binary); decode it before gunzipping. A real gzip file on disk
+        # takes the fast path. (Codex review 2026-10-18: committed blob was
+        # base64, which made every invocation raise BadGzipFile.)
+        raw = base64.b64decode(raw)
+    with gzip.open(io.BytesIO(raw), "rt", newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
@@ -240,6 +251,21 @@ def _to_sample(row: dict, series_context: bool) -> Sample:
         raise ValueError(
             f"correct_answer not in options for row {row['Unnamed: 0']}"
         )
+    # Hack-pass 2026-10-19: the upstream CSV lists the correct answer first
+    # 61.7% of the time, and multiple_choice() does not shuffle — so an
+    # "always pick A" agent scored 61.7% with zero reasoning. Shuffle here,
+    # per sample, with a seed derived from the sample id: the permutation is
+    # then identical whether the question runs alone, in a tier slice, or in
+    # the full 750 (a single shared RNG would shift permutations whenever the
+    # sample set changes — Codex review 2026-10-19). Datadog's own harness
+    # shuffles too, so this matches upstream behavior.
+    sample_id = f"arfbench-{row['Unnamed: 0']}"
+    seed = int(hashlib.sha256(sample_id.encode()).hexdigest(), 16) % (2**31)
+    rng = random.Random(seed)
+    perm = list(range(len(options)))
+    rng.shuffle(perm)
+    options = [options[i] for i in perm]
+    correct_idx = perm.index(correct_idx)
     context_text = ""
     ts_resolution = None
     if series_context:
@@ -251,7 +277,7 @@ def _to_sample(row: dict, series_context: bool) -> Sample:
         input=row["question"].strip() + context_text + note,
         choices=options,
         target=_letter(correct_idx),
-        id=f"arfbench-{row['Unnamed: 0']}",
+        id=sample_id,
         metadata={
             "task_category": row["task_category"],
             "difficulty": row["difficulty"],
@@ -270,7 +296,16 @@ def arfbench(
     series_context: bool | str = True,
 ):
     if isinstance(series_context, str):
-        series_context = series_context.strip().lower() in ("true", "1", "yes")
+        v = series_context.strip().lower()
+        if v in ("true", "1", "yes"):
+            series_context = True
+        elif v in ("false", "0", "no"):
+            series_context = False
+        else:
+            raise ValueError(
+                f"series_context={series_context!r} not recognized "
+                "(use true/false)"
+            )
     if series_context:
         try:
             import pandas  # noqa: F401
@@ -288,15 +323,11 @@ def arfbench(
             raise ValueError(f"No rows at difficulty {want!r}")
     if limit is not None:
         rows = rows[: int(limit)]
-    dataset = MemoryDataset([_to_sample(r, series_context) for r in rows])
-    # Hack-pass 2026-10-19: the upstream CSV lists the correct answer first
-    # 61.7% of the time, and multiple_choice() does not shuffle — so an
-    # "always pick A" agent scored 61.7% with zero reasoning. Datadog's own
-    # harness shuffles options; we do the same here. Fixed seed keeps runs
-    # reproducible. Residual note: even shuffled, no-reasoning heuristics
-    # (longest choice, max question-overlap) still beat chance ~33% vs ~24%,
-    # which is inherent distractor weakness in the questions, not the harness.
-    dataset.shuffle_choices(seed=42)
+    dataset = [_to_sample(r, series_context) for r in rows]
+    # Residual note (hack-pass 2026-10-19): even shuffled, no-reasoning
+    # heuristics (longest choice, max question-overlap) still beat chance
+    # ~33% vs ~24% — inherent distractor weakness in the questions, not the
+    # harness. Treat ~33% as the no-reasoning baseline when reading scores.
     return Task(
         dataset=dataset,
         solver=multiple_choice(),
