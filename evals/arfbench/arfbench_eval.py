@@ -332,7 +332,11 @@ def _summarize_ts(
         if text:
             blocks.append(text)
             resolutions.append(res)
-    if not blocks:
+    if not blocks or len(blocks) != len(parts):
+        # Paired (correlation / leading-indicator) questions name two series:
+        # emitting context for only one side would look complete but be
+        # invalid, so paired context is all-or-none. Fall back to the
+        # descriptions-only note instead (Codex review 2026-10-19).
         return None, None
     return "\n".join(blocks), ",".join(resolutions)
 
@@ -414,6 +418,7 @@ def arfbench(
     if series_context:
         try:
             import pandas  # noqa: F401
+            import pyarrow  # noqa: F401
         except ImportError:
             raise RuntimeError(
                 "series_context=true needs pandas+pyarrow "
@@ -427,7 +432,10 @@ def arfbench(
         if not rows:
             raise ValueError(f"No rows at difficulty {want!r}")
     if limit is not None:
-        rows = rows[: int(limit)]
+        limit = int(limit)
+        if limit <= 0:
+            raise ValueError(f"limit must be a positive integer, got {limit}")
+        rows = rows[:limit]
     dataset = [_to_sample(r, series_context) for r in rows]
     # Residual note (hack-pass 2026-10-19): even shuffled, no-reasoning
     # heuristics (longest choice, max question-overlap) still beat chance

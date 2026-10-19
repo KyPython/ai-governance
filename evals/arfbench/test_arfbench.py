@@ -66,6 +66,29 @@ def test_invalid_series_context_raises():
         task_mod.arfbench(limit=1, series_context="ture")
 
 
+def test_nonpositive_limit_raises():
+    with pytest.raises(ValueError):
+        task_mod.arfbench(limit=0, series_context=False)
+    with pytest.raises(ValueError):
+        task_mod.arfbench(limit=-1, series_context=False)
+
+
+def test_paired_context_is_all_or_none(monkeypatch):
+    # Only the first of two groups has ts-data: the paired question must
+    # fall back to descriptions-only rather than emit one-sided context.
+    def fake_fetch(group, resolutions):
+        if group == "35928_0":
+            return ("dummy.parquet", "300")
+        return (None, None)
+
+    monkeypatch.setattr(task_mod, "_fetch_ts", fake_fetch)
+    monkeypatch.setattr(
+        task_mod, "_summarize_one", lambda group, fine: ("CTX", "300") if group == "35928_0" else (None, None)
+    )
+    text, res = task_mod._summarize_ts("35928_0,35928_1", fine=False)
+    assert text is None and res is None
+
+
 def test_fine_resolution_detection():
     assert task_mod._needs_fine_resolution(
         "When did it start?", ["18:19:10", "18:19:43"]
