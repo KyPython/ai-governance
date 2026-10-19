@@ -102,8 +102,9 @@ on a frontier API model. Start with `-T tier=1 -T limit=20` to calibrate.
   identical to Datadog's published numbers (their GPT-5: 62.7% accuracy,
   51.9% F1) — they feed full series text/images; we feed compact stats.
 - No image inputs: ARFBench has per-question plots; v2 is text-only.
-- No shuffling: choice order is dataset order. The `choice()` scorer detects
-  shuffled choices; add shuffling before any serious run.
+- Shuffling: choices are shuffled per sample with a seed derived from the
+  sample id (stable across tier slices and runs); the `choice()` scorer
+  tracks the remapped target letter.
 - Single-tier filter only (`-T tier=N`); no category filter yet.
 - Resolution fixed at 5-min bars (300s), falling back to 30-min/1-hour for
   very large groups. Datadog's harness picks per-question optimal intervals;
@@ -143,10 +144,10 @@ Root cause of the big one: the upstream CSV lists the correct answer first
 61.7% of the time (verified in Datadog's raw file — their data, not this
 wrap), and inspect_ai 0.3.280's `multiple_choice()` does not shuffle choices.
 Datadog's own harness shuffles options, so their leaderboard is unaffected —
-the vulnerability was in this wrap. Fixed with
-`dataset.shuffle_choices(seed=42)` (fixed seed: reproducible runs); post-fix,
-always-A scores 25.2% ≈ chance. Verified: all 750 targets remap correctly,
-mockllm smoke run passes.
+the vulnerability was in this wrap. Fixed with a per-sample shuffle (seed
+derived from the sample id, so permutations are identical across tier
+slices and full runs); post-fix, always-A scores ~23% ≈ chance. Verified:
+all 750 targets remap correctly, mockllm smoke run passes.
 
 **Residual, by design:** even shuffled, longest-choice (33.6%) and
 max-overlap (33.3%) heuristics beat chance — inherent distractor weakness in

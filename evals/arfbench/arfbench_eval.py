@@ -94,8 +94,11 @@ HF_TS_URL = (
 # resolutions on every sample — thousands of redundant requests per run).
 _TS_UNAVAILABLE: set[str] = set()
 
-# Second-precision timestamps in a question or its choices.
-_TS_SEC_RE = re.compile(r"\d{1,2}:\d{2}:\d{2}")
+# Second-precision timestamps in a question or its choices. Only nonzero
+# seconds trigger fine resolution: minute-aligned choices (e.g. 18:19:00)
+# are answerable from 60/300s data, and starting every timestamp question
+# at 10s wastes downloads (Codex review 2026-10-19).
+_TS_SEC_RE = re.compile(r"\d{1,2}:\d{2}:(\d{2})")
 
 V1_NOTE = (
     "\n\n[Note: this harness does not attach the raw time-series data. "
@@ -149,73 +152,85 @@ def _letter(idx: int) -> str:
     return chr(ord("A") + idx)
 
 
+def _fetch_ts_at(
+    query_group: str, res: str
+) -> Path | None:
+    """Fetch and validate one query_group at one resolution.
+
+    Returns the parquet path, or None when no usable file exists at this
+    resolution. Only an expected not-found (HTTP 404) is silent; transient
+    or infrastructure failures raise instead of producing a silently
+    invalid benchmark score (Codex review 2026-10-18)."""
+    TS_CACHE.mkdir(parents=True, exist_ok=True)
+    dest = TS_CACHE / f"{query_group}_{res}.parquet"
+    if not dest.exists():
+        url = HF_TS_URL.format(group=query_group, res=res)
+        req = urllib.request.Request(url, headers={"User-Agent": "muse-agent"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                if r.status != 200:
+                    return None
+                dest.write_bytes(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None  # expected: no data at this resolution
+            raise RuntimeError(
+                f"time-series download failed for {query_group} "
+                f"at {res}s resolution: HTTP {e.code}"
+            ) from e
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            raise RuntimeError(
+                f"time-series download failed for {query_group} "
+                f"at {res}s resolution: {e}"
+            ) from e
+    # Row-count check without loading everything: read just epoch col.
+    try:
+        import pandas as pd
+
+        n = pd.read_parquet(dest, columns=["epoch"]).shape[0]
+    except Exception:
+        dest.unlink(missing_ok=True)
+        return None
+    if n > TS_MAX_ROWS:
+        # Too big at this resolution: drop it so a coarser one is tried.
+        dest.unlink(missing_ok=True)
+        return None
+    return dest
+
+
 def _fetch_ts(
     query_group: str, resolutions: list[str]
 ) -> tuple[Path | None, str | None]:
     """Lazily download one query_group's parquet (cached). Returns
-    (path, resolution) or (None, None) when no usable file exists.
-
-    Only an expected not-found (HTTP 404) falls back silently. Transient or
-    infrastructure failures (timeouts, DNS/TLS errors, 5xx) raise: silently
-    continuing with description-only prompts would produce a complete but
-    invalid benchmark score (Codex review 2026-10-18)."""
+    (path, resolution) or (None, None) when no usable file exists."""
     if query_group in _TS_UNAVAILABLE:
         return None, None
-    TS_CACHE.mkdir(parents=True, exist_ok=True)
     for res in resolutions:
-        dest = TS_CACHE / f"{query_group}_{res}.parquet"
-        if not dest.exists():
-            url = HF_TS_URL.format(group=query_group, res=res)
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "muse-agent"}
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=60) as r:
-                    if r.status != 200:
-                        continue
-                    dest.write_bytes(r.read())
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    continue  # expected: no data at this resolution
-                raise RuntimeError(
-                    f"time-series download failed for {query_group} "
-                    f"at {res}s resolution: HTTP {e.code}"
-                ) from e
-            except (urllib.error.URLError, TimeoutError, OSError) as e:
-                raise RuntimeError(
-                    f"time-series download failed for {query_group} "
-                    f"at {res}s resolution: {e}"
-                ) from e
-        # Row-count check without loading everything: read just epoch col.
-        try:
-            import pandas as pd
-
-            n = pd.read_parquet(dest, columns=["epoch"]).shape[0]
-        except Exception:
-            dest.unlink(missing_ok=True)
-            continue
-        if n <= TS_MAX_ROWS:
-            return dest, res
-        # Too big at this resolution: drop it and try coarser.
-        dest.unlink(missing_ok=True)
+        path = _fetch_ts_at(query_group, res)
+        if path is not None:
+            return path, res
     _TS_UNAVAILABLE.add(query_group)
     return None, None
 
 
 def _summarize_one(
-    query_group: str, fine: bool
+    query_group: str, fine: bool, res: str | None = None
 ) -> tuple[str | None, str | None]:
     """Compact textual summary of a single query_group's series.
 
     Returns (summary_text, resolution) or (None, None) when the series
     is unavailable. Never raises for missing data — callers fall back
-    to the v1 note.
+    to the v1 note. When `res` is given, that resolution is used instead
+    of searching (paired questions negotiate one common resolution).
     """
     import pandas as pd
     import numpy as np
 
     resolutions = TS_RESOLUTIONS_FINE if fine else TS_RESOLUTIONS
-    path, res = _fetch_ts(query_group, resolutions)
+    if res is None:
+        path, res = _fetch_ts(query_group, resolutions)
+    else:
+        path = _fetch_ts_at(query_group, res)
     if path is None:
         return None, None
     try:
@@ -324,31 +339,45 @@ def _summarize_ts(
 ) -> tuple[str | None, str | None]:
     """Summarize one or more comma-separated query_groups (correlation
     questions name two). Returns (combined_text, resolutions) or
-    (None, None) when no group has usable data."""
+    (None, None) when no group has usable data.
+
+    Paired context is all-or-none at one common resolution: independent
+    per-side selection could compare 5-min peaks against 1-hour peaks,
+    making leading/lagging inference invalid (Codex review 2026-10-19).
+    """
     parts = [g.strip() for g in query_group.split(",") if g.strip()]
-    blocks, resolutions = [], []
-    for part in parts:
-        text, res = _summarize_one(part, fine)
-        if text:
+    resolutions = TS_RESOLUTIONS_FINE if fine else TS_RESOLUTIONS
+    if len(parts) > 1:
+        common = None
+        for res in resolutions:
+            if all(_fetch_ts_at(p, res) is not None for p in parts):
+                common = res
+                break
+        if common is None:
+            return None, None
+        blocks, res_list = [], []
+        for part in parts:
+            text, r = _summarize_one(part, fine, res=common)
+            if text is None:  # pragma: no cover - verified usable above
+                return None, None
             blocks.append(text)
-            resolutions.append(res)
-    if not blocks or len(blocks) != len(parts):
-        # Paired (correlation / leading-indicator) questions name two series:
-        # emitting context for only one side would look complete but be
-        # invalid, so paired context is all-or-none. Fall back to the
-        # descriptions-only note instead (Codex review 2026-10-19).
+            res_list.append(r)
+        return "\n".join(blocks), ",".join(res_list)
+    text, res = _summarize_one(parts[0], fine)
+    if text is None:
         return None, None
-    return "\n".join(blocks), ",".join(resolutions)
+    return text, res
 
 
 def _needs_fine_resolution(question: str, options: list[str]) -> bool:
-    """True when the question or choices name second-precision timestamps
-    (e.g. 18:19:10 vs 18:19:43): those collapse into one bar at 5-min
-    resolution, so the sample needs 10/60s data to be answerable."""
-    return bool(
-        _TS_SEC_RE.search(question)
-        or any(_TS_SEC_RE.search(o) for o in options)
-    )
+    """True when the question or choices name timestamps with nonzero
+    seconds (e.g. 18:19:10 vs 18:19:43): those collapse into one bar at
+    5-min resolution, so the sample needs 10/60s data to be answerable.
+    Minute-aligned timestamps (18:19:00) stay on coarser data."""
+    def nonzero(s: str) -> bool:
+        return any(m.group(1) != "00" for m in _TS_SEC_RE.finditer(s))
+
+    return nonzero(question) or any(nonzero(o) for o in options)
 
 
 def _to_sample(row: dict, series_context: bool) -> Sample:

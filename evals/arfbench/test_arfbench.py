@@ -32,9 +32,7 @@ def test_task_constructs_without_context():
 
 
 def test_task_constructs_with_context_when_no_ts_data(monkeypatch):
-    monkeypatch.setattr(
-        task_mod, "_fetch_ts", lambda group, resolutions: (None, None)
-    )
+    monkeypatch.setattr(task_mod, "_fetch_ts_at", lambda group, res: None)
     task = task_mod.arfbench(series_context=True)
     assert len(task.dataset) == 750
     # No ts-data anywhere -> every prompt carries the v1 note.
@@ -76,17 +74,32 @@ def test_nonpositive_limit_raises():
 def test_paired_context_is_all_or_none(monkeypatch):
     # Only the first of two groups has ts-data: the paired question must
     # fall back to descriptions-only rather than emit one-sided context.
-    def fake_fetch(group, resolutions):
-        if group == "35928_0":
-            return ("dummy.parquet", "300")
-        return (None, None)
-
-    monkeypatch.setattr(task_mod, "_fetch_ts", fake_fetch)
     monkeypatch.setattr(
-        task_mod, "_summarize_one", lambda group, fine: ("CTX", "300") if group == "35928_0" else (None, None)
+        task_mod, "_fetch_ts_at", lambda group, res: "p.parquet" if group == "g1" else None
     )
-    text, res = task_mod._summarize_ts("35928_0,35928_1", fine=False)
+    text, res = task_mod._summarize_ts("g1,g2", fine=False)
     assert text is None and res is None
+
+
+def test_paired_context_negotiates_common_resolution(monkeypatch):
+    # g1 usable at 60s, g2 only at 300s: both sides must use 300s so their
+    # peaks stay temporally comparable.
+    usable = {("g1", "60"), ("g1", "300"), ("g2", "300")}
+
+    def fake_fetch(group, res):
+        return "p.parquet" if (group, res) in usable else None
+
+    seen = []
+
+    def fake_summarize(group, fine, res=None):
+        seen.append((group, res))
+        return (f"CTX-{group}@{res}", res)
+
+    monkeypatch.setattr(task_mod, "_fetch_ts_at", fake_fetch)
+    monkeypatch.setattr(task_mod, "_summarize_one", fake_summarize)
+    text, res = task_mod._summarize_ts("g1,g2", fine=True)
+    assert seen == [("g1", "300"), ("g2", "300")]
+    assert "g1@300" in text and "g2@300" in text
 
 
 def test_fine_resolution_detection():
@@ -95,4 +108,8 @@ def test_fine_resolution_detection():
     )
     assert not task_mod._needs_fine_resolution(
         "Was there an anomaly?", ["yes", "no"]
+    )
+    # Minute-aligned timestamps stay on coarser data.
+    assert not task_mod._needs_fine_resolution(
+        "When?", ["18:19:00", "18:24:00"]
     )
