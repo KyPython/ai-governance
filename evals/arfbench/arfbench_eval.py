@@ -3,8 +3,9 @@ ARFBench wrapped as an inspect_ai task — v2 (local exploration).
 
 Datadog's Anomaly Reasoning Framework Benchmark: 750 multiple-choice QA pairs
 drawn from 63 real production incidents, testing time-series anomaly reasoning.
-  Source: https://github.com/DataDog/ARFBench (Apache 2.0)
-  Dataset: https://huggingface.co/datasets/Datadog/ARFBench (public, not gated)
+  Source: https://github.com/DataDog/ARFBench (Apache 2.0 — see LICENSE)
+  Dataset: https://huggingface.co/datasets/Datadog/ARFBench (public, not gated;
+    time-series downloads pinned to revision HF_REVISION below)
   Paper: arXiv 2604.21199 (Stephan Xie et al.)
 
 v2 adds compact time-series context per question (v1 attached nothing):
@@ -13,13 +14,28 @@ v2 adds compact time-series context per question (v1 attached nothing):
   (resolutions: 10/60/300/1800/3600/86400s; same mapping Datadog's own
   eval code uses via get_time_series_paths()).
 - Parquet files are fetched lazily per query_group and cached under
-  data/ts/. Only 134 of the 406 query_groups in the CSV have ts-data;
-  the rest fall back to v1 behavior (descriptions only).
+  data/ts/ (git-ignored). Only 134 of the 406 query_groups in the CSV have
+  ts-data; the rest fall back to v1 behavior (descriptions only). Groups
+  with no data at any resolution are memoized for the run.
 - The summary is STATISTICAL, not raw data: per-variate mean/std/min/max
   plus the largest local deviation (rolling z-score) with its timestamp.
   No anomaly labels are asserted — the model does the reasoning.
   Raw dumps are never put in prompts (a single group can hold 2,283
   variates x thousands of points).
+- Questions naming second-precision timestamps use 10/60s data and keep
+  second precision; coarser questions keep 5-min+ bars and HH:MM.
+- Every prompt carries Datadog's task instructions (anomaly definitions),
+  distilled from the upstream benchmark prompt — omitting them changes what
+  the categorization/magnitude questions measure.
+- Download failures: HTTP 404 falls back silently; transient/infra errors
+  raise instead of producing a silently invalid score.
+
+Anti-reward-hacking (hack-pass 2026-10-19): the upstream CSV lists the
+correct answer first 61.7% of the time and multiple_choice() does not
+shuffle, so choices are shuffled per sample with a seed derived from the
+sample id (stable across tier slices and runs). Residual no-reasoning
+baseline ~33% (longest-choice / question-overlap heuristics) — inherent
+distractor weakness, not the harness.
 
 Task params:
   limit          - max samples to run (e.g. -T limit=10 for a quick smoke run)
@@ -28,19 +44,22 @@ Task params:
                    default true). -T series_context=false restores v1
                    behavior for quick/cheap runs.
 
-Run (from this directory, reuses the sibling eval's venv):
-  ../first-approval-eval/.venv/bin/inspect eval arfbench_eval.py \
-      --model mockllm/model -T limit=5 -T series_context=true --log-dir ./logs
+Run (from the repo root, after pip install -r requirements.txt):
+  inspect eval evals/arfbench/arfbench_eval.py \
+      --model mockllm/model -T limit=5 -T series_context=true \
+      --log-dir evals/arfbench/logs
 
-inspect_ai 0.3.280. pandas+pyarrow required in the venv when
-series_context=true (already installed in first-approval-eval/.venv).
-No API key needed for mockllm validation.
+inspect_ai 0.3.280. pandas+pyarrow required when series_context=true
+(declared in requirements.txt). No API key needed for mockllm validation.
+Regression tests: evals/arfbench/test_arfbench.py (no network needed).
 """
 
 import csv
 import hashlib
 import json
 import random
+import re
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -54,17 +73,60 @@ TS_CACHE = Path(__file__).parent / "data" / "ts"
 
 # Fine -> coarse; first resolution with <= TS_MAX_ROWS wins.
 TS_RESOLUTIONS = ["300", "1800", "3600"]
+# Used when the question needs second-level precision (timestamp choices like
+# 18:19:10 vs 18:19:43 collapse into one 5-min bar otherwise).
+TS_RESOLUTIONS_FINE = ["10", "60", "300", "1800", "3600"]
 TS_MAX_ROWS = 50_000
 TS_MAX_VARIATES = 8
+# Pinned dataset revision (Codex review 2026-10-18): resolving from the mutable
+# `main` ref made scores depend on cache state and run date — upstream has
+# already replaced uploads (see Datadog/ARFBench@1cc8ae5). Pinned 2026-10-19;
+# main pointed at this revision on that date, so existing caches stay valid.
+HF_REVISION = "1cc8ae54e9633f596b755f7c4bce54ccb0cb9f5a"
 HF_TS_URL = (
-    "https://huggingface.co/datasets/Datadog/ARFBench/resolve/main/"
-    "arfbench-ts-data/{group}_{res}.parquet"
+    "https://huggingface.co/datasets/Datadog/ARFBench/resolve/"
+    + HF_REVISION
+    + "/arfbench-ts-data/{group}_{res}.parquet"
 )
+
+# Groups with no ts-data at any resolution, memoized for the task lifetime
+# (Codex review 2026-10-18: without this, heavily repeated groups retried all
+# resolutions on every sample — thousands of redundant requests per run).
+_TS_UNAVAILABLE: set[str] = set()
+
+# Second-precision timestamps in a question or its choices.
+_TS_SEC_RE = re.compile(r"\d{1,2}:\d{2}:\d{2}")
 
 V1_NOTE = (
     "\n\n[Note: this harness does not attach the raw time-series data. "
     "Answer from the question text and series descriptions above.]"
 )
+
+# Task instructions, distilled from Datadog's upstream ARFBench benchmark
+# prompt (Apache 2.0; utils/prompt_test_benchmark.py). Upstream supplies these
+# definitions on every evaluation; omitting them changes what the
+# categorization and magnitude questions measure (Codex review 2026-10-18).
+# Adapted to this text-only harness (no plot images).
+TASK_INSTRUCTIONS = """\
+[Task instructions — adapted from Datadog's ARFBench benchmark prompt]
+You are an expert at analyzing time-series data and answering questions about anomalies.
+An anomaly is present if the time-series has a value significantly different from its counterfactual (non-anomalous) values.
+First consider whether an anomaly exists at all — this is the most important step. If none exists, answer "No Anomaly".
+
+Anomaly categories (for categorization questions):
+- Level Shift: sustained change in mean value.
+- Transient Spike: one or more sudden spikes; the value returns to normal quickly with no intervention.
+- Change in Seasonality: change in the seasonal pattern of the data.
+- Change in Variance: major sustained change in variance.
+- Change in Trend: major change in the long-term increase or decrease.
+- No Anomaly.
+
+Anomaly magnitude: the maximum ratio of anomaly values to counterfactual non-anomalous values (if the counterfactual is 0, use the absolute deviation from the mean counterfactual).
+Anomaly correlation (paired questions): anomalies are correlated if they have a known causal relation, similar trends over time, or the same underlying root cause.
+Leading/lagging indicator (paired questions): use the timing of the anomalies to decide which came first.
+
+If no answer choice matches your result exactly, choose the closest one. Only answer when your reasoning supports it — do not guess.
+"""
 
 
 def _load_rows() -> list[dict]:
@@ -87,11 +149,20 @@ def _letter(idx: int) -> str:
     return chr(ord("A") + idx)
 
 
-def _fetch_ts(query_group: str) -> tuple[Path | None, str | None]:
+def _fetch_ts(
+    query_group: str, resolutions: list[str]
+) -> tuple[Path | None, str | None]:
     """Lazily download one query_group's parquet (cached). Returns
-    (path, resolution) or (None, None) when no usable file exists."""
+    (path, resolution) or (None, None) when no usable file exists.
+
+    Only an expected not-found (HTTP 404) falls back silently. Transient or
+    infrastructure failures (timeouts, DNS/TLS errors, 5xx) raise: silently
+    continuing with description-only prompts would produce a complete but
+    invalid benchmark score (Codex review 2026-10-18)."""
+    if query_group in _TS_UNAVAILABLE:
+        return None, None
     TS_CACHE.mkdir(parents=True, exist_ok=True)
-    for res in TS_RESOLUTIONS:
+    for res in resolutions:
         dest = TS_CACHE / f"{query_group}_{res}.parquet"
         if not dest.exists():
             url = HF_TS_URL.format(group=query_group, res=res)
@@ -103,10 +174,18 @@ def _fetch_ts(query_group: str) -> tuple[Path | None, str | None]:
                     if r.status != 200:
                         continue
                     dest.write_bytes(r.read())
-            except Exception:
-                if dest.exists():
-                    dest.unlink(missing_ok=True)
-                continue
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    continue  # expected: no data at this resolution
+                raise RuntimeError(
+                    f"time-series download failed for {query_group} "
+                    f"at {res}s resolution: HTTP {e.code}"
+                ) from e
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                raise RuntimeError(
+                    f"time-series download failed for {query_group} "
+                    f"at {res}s resolution: {e}"
+                ) from e
         # Row-count check without loading everything: read just epoch col.
         try:
             import pandas as pd
@@ -119,10 +198,13 @@ def _fetch_ts(query_group: str) -> tuple[Path | None, str | None]:
             return dest, res
         # Too big at this resolution: drop it and try coarser.
         dest.unlink(missing_ok=True)
+    _TS_UNAVAILABLE.add(query_group)
     return None, None
 
 
-def _summarize_one(query_group: str) -> tuple[str | None, str | None]:
+def _summarize_one(
+    query_group: str, fine: bool
+) -> tuple[str | None, str | None]:
     """Compact textual summary of a single query_group's series.
 
     Returns (summary_text, resolution) or (None, None) when the series
@@ -132,7 +214,8 @@ def _summarize_one(query_group: str) -> tuple[str | None, str | None]:
     import pandas as pd
     import numpy as np
 
-    path, res = _fetch_ts(query_group)
+    resolutions = TS_RESOLUTIONS_FINE if fine else TS_RESOLUTIONS
+    path, res = _fetch_ts(query_group, resolutions)
     if path is None:
         return None, None
     try:
@@ -145,7 +228,16 @@ def _summarize_one(query_group: str) -> tuple[str | None, str | None]:
     df = df.sort_values("epoch")
     t0 = df["epoch"].min().strftime("%Y-%m-%d %H:%M")
     t1 = df["epoch"].max().strftime("%Y-%m-%d %H:%M")
-    res_label = {"300": "5-min", "1800": "30-min", "3600": "1-hour"}[res]
+    res_label = {
+        "10": "10-sec",
+        "60": "1-min",
+        "300": "5-min",
+        "1800": "30-min",
+        "3600": "1-hour",
+    }[res]
+    # Second-precision questions need second-precision timestamps; coarser
+    # questions keep HH:MM to save tokens (Codex review 2026-10-18).
+    ts_fmt = "%H:%M:%S" if fine else "%H:%M"
 
     # Strip a common label prefix to save tokens (e.g. "datacenter:1,").
     labels = [str(g) for g in df["group"].unique()]
@@ -182,7 +274,7 @@ def _summarize_one(query_group: str) -> tuple[str | None, str | None]:
             else:
                 pi = za.idxmax()
                 peak_z = float(za.loc[pi])
-                peak_t = s["epoch"].loc[pi].strftime("%H:%M")
+                peak_t = s["epoch"].loc[pi].strftime(ts_fmt)
         stats.append(
             {
                 "label": short(str(lab)),
@@ -227,20 +319,32 @@ def _summarize_one(query_group: str) -> tuple[str | None, str | None]:
     return "\n".join(lines), res
 
 
-def _summarize_ts(query_group: str) -> tuple[str | None, str | None]:
+def _summarize_ts(
+    query_group: str, fine: bool
+) -> tuple[str | None, str | None]:
     """Summarize one or more comma-separated query_groups (correlation
     questions name two). Returns (combined_text, resolutions) or
     (None, None) when no group has usable data."""
     parts = [g.strip() for g in query_group.split(",") if g.strip()]
     blocks, resolutions = [], []
     for part in parts:
-        text, res = _summarize_one(part)
+        text, res = _summarize_one(part, fine)
         if text:
             blocks.append(text)
             resolutions.append(res)
     if not blocks:
         return None, None
     return "\n".join(blocks), ",".join(resolutions)
+
+
+def _needs_fine_resolution(question: str, options: list[str]) -> bool:
+    """True when the question or choices name second-precision timestamps
+    (e.g. 18:19:10 vs 18:19:43): those collapse into one bar at 5-min
+    resolution, so the sample needs 10/60s data to be answerable."""
+    return bool(
+        _TS_SEC_RE.search(question)
+        or any(_TS_SEC_RE.search(o) for o in options)
+    )
 
 
 def _to_sample(row: dict, series_context: bool) -> Sample:
@@ -269,12 +373,13 @@ def _to_sample(row: dict, series_context: bool) -> Sample:
     context_text = ""
     ts_resolution = None
     if series_context:
-        summary, ts_resolution = _summarize_ts(row["query_group"])
+        fine = _needs_fine_resolution(row["question"], options)
+        summary, ts_resolution = _summarize_ts(row["query_group"], fine)
         if summary:
             context_text = "\n\n" + summary
     note = V1_NOTE if not context_text else ""
     return Sample(
-        input=row["question"].strip() + context_text + note,
+        input=TASK_INSTRUCTIONS + "\n" + row["question"].strip() + context_text + note,
         choices=options,
         target=_letter(correct_idx),
         id=sample_id,
@@ -311,8 +416,8 @@ def arfbench(
             import pandas  # noqa: F401
         except ImportError:
             raise RuntimeError(
-                "series_context=true needs pandas+pyarrow in the venv "
-                "(pip install pandas pyarrow), or run with "
+                "series_context=true needs pandas+pyarrow "
+                "(see requirements.txt), or run with "
                 "-T series_context=false"
             )
     rows = _load_rows()
