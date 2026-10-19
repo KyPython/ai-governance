@@ -124,3 +124,36 @@ on a frontier API model. Start with `-T tier=1 -T limit=20` to calibrate.
   no-data fallback paths verified directly; `series_context=false`
   reproduces v1 prompts. Scorer executes on all samples.
 - No commits, pushes, or publishes. Local files only.
+
+## Hack-pass: reward-hacking check (2026-10-19)
+
+Prompted by Terminal-Bench's verifier hardening: can a zero-reasoning agent
+score above chance here? Five heuristic hackers run against all 750 rows,
+scored exactly as the task scores them. Blended random chance: 639
+five-option questions (20%) + 111 two-option questions (50%) = **24.4%**.
+
+| Hacker heuristic | Score | vs chance |
+|---|---|---|
+| Always pick A | **61.7%** (463/750) | p < 0.0001 — was gameable |
+| Always pick longest choice | 33.6% | p < 0.0001 |
+| Pick max question-word overlap | 33.3% | p < 0.0001 |
+| Always pick B / C / D / E, shortest choice | 4–17% | not above chance |
+
+Root cause of the big one: the upstream CSV lists the correct answer first
+61.7% of the time (verified in Datadog's raw file — their data, not this
+wrap), and inspect_ai 0.3.280's `multiple_choice()` does not shuffle choices.
+Datadog's own harness shuffles options, so their leaderboard is unaffected —
+the vulnerability was in this wrap. Fixed with
+`dataset.shuffle_choices(seed=42)` (fixed seed: reproducible runs); post-fix,
+always-A scores 25.2% ≈ chance. Verified: all 750 targets remap correctly,
+mockllm smoke run passes.
+
+**Residual, by design:** even shuffled, longest-choice (33.6%) and
+max-overlap (33.3%) heuristics beat chance — inherent distractor weakness in
+the questions (correct answers skew longer and share more stem vocabulary).
+Treat **~33% as the no-reasoning baseline** when reading scores from this
+task, not 24.4%.
+
+Lesson: a faithful format conversion silently dropped a defense the original
+authors had. Hack-pass every eval before trusting a score — this one costs a
+single script and no API calls.
