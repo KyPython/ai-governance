@@ -677,7 +677,7 @@ jobs:
                       # Agents stamp the roles.yml login as the mailbox (cursoragent@cursor.com).
                       add_login(ids, email.split("@", 1)[0])
                   return ids
-              authored = {}
+              authored, committed = {}, {}
               if history is not None:
                   for line in history.splitlines():
                       parts = line.split("\x1f")
@@ -689,7 +689,9 @@ jobs:
                       people.append((f"{sha[:7]} author {an} <{ae}>", author_ids))
                       authored.setdefault(sha, []).append(author_ids)
                       if ce.lower() != "noreply@github.com":
-                          people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
+                          committer_ids = ident(cn, ce)
+                          people.append((f"{sha[:7]} committer {cn} <{ce}>", committer_ids))
+                          committed.setdefault(sha, []).append(committer_ids)
               if os.environ.get("RESOLVE_GITHUB_LOGINS") == "true" and authored:
                   token = os.environ.get("GITHUB_TOKEN", "")
                   repo = os.environ.get("REPO", "")
@@ -706,9 +708,13 @@ jobs:
                           except Exception as e:
                               warn(f"Role gate: could not read GitHub login for {sha[:7]} ({e}). Using the declared git identity only.")
                               continue
-                          login = ((data.get("author") or {}) if isinstance(data.get("author"), dict) else {}).get("login")
+                          def side_login(side):
+                              node = data.get(side)
+                              return node.get("login") if isinstance(node, dict) else None
                           for ids in id_sets:
-                              add_login(ids, login)
+                              add_login(ids, side_login("author"))
+                          for ids in committed.get(sha, []):
+                              add_login(ids, side_login("committer"))
               def role_of(ids):
                   if ids & SPEC_AUTHORS: return "spec-author"
                   if ids & CODERS: return "coder"
