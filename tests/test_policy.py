@@ -28,7 +28,9 @@ SPEC = """# Requirements: demo
 """
 KY = ("KyPython", "179089861+KyPython@users.noreply.github.com")
 KIRO = ("kiro-agent[bot]", "123+kiro-agent[bot]@users.noreply.github.com")
+KIRO_REAL = ("Kiro Agent", "244629292+kiro-agent@users.noreply.github.com")
 CURSOR = ("cursor[bot]", "206951365+cursor[bot]@users.noreply.github.com")
+CURSOR_REAL = ("Cursor Agent", "cursoragent@cursor.com")
 WEBFLOW = ("GitHub", "noreply@github.com")
 
 
@@ -207,6 +209,24 @@ class RoleGate(Base):
         r = self.repo(); r.write({".kiro/specs/demo/requirements.md": SPEC})
         code, out = r.policy(body="Relates to #4", author=KY, opener="KyPython")
         self.assertEqual(code, 0, out)
+
+    def test_GATE_3_1_github_strips_bot_suffix_from_noreply_email(self):
+        # ROLES-3.2: 244629292+kiro-agent@users.noreply.github.com is kiro-agent[bot].
+        r = self.repo(); r.write({"specs/demo/requirements.md": SPEC})
+        code, out = r.policy(body="Relates to #4", author=KIRO_REAL, opener="kiro-agent[bot]")
+        self.assertEqual(code, 0, out)
+        self.assertIn("role gate: every PR opener", out)
+
+    def test_GATE_3_7_cursor_mailbox_matches_listed_coder_login(self):
+        r = self.code_repo(); r.write({"src/app.js": "export const x = 2;\n", "tests/app.test.js": "test('DEMO-1.1 greets', () => {});\n"})
+        code, out = r.policy(body="Relates to #3\n\nSpec: specs/demo", author=CURSOR_REAL, opener="cursoragent")
+        self.assertEqual(code, 0, out)
+
+    def test_GATE_3_1_unlisted_mailbox_still_fails(self):
+        r = self.repo(); r.write({"specs/demo/requirements.md": SPEC})
+        code, out = r.policy(body="Relates to #4", author=("Mallory", "mallory@evil.com"), opener="kiro-agent[bot]")
+        self.assertEqual(code, 1, out)
+        self.assertIn("role: unknown", out)
 
     def test_GATE_3_2_web_flow_committer_is_ignored_but_author_is_checked(self):
         r = self.repo(); r.write({"specs/demo/requirements.md": SPEC})

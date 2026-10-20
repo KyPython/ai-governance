@@ -72,6 +72,14 @@ on:
         description: "auto = required when .systems-thinking/contracts/ exists; required; off"
         type: string
         default: "auto"
+      system-quality-definition:
+        description: Project-relative eight-dimension definition; opt in with run-quality true.
+        type: string
+        default: ""
+      prerequisite-result:
+        description: Actual needs result of an external required validation job; only success is accepted.
+        type: string
+        default: "success"
     outputs:
       verdict:
         description: "pass or fail"
@@ -157,7 +165,21 @@ jobs:
             python -m pip install --upgrade pip
             if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
             if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-            if [ -f pyproject.toml ]; then pip install -e ".[dev]" 2>/dev/null || pip install -e . || true; fi
+            if [ -f pyproject.toml ]; then
+              # A tool-only pyproject is not an installable project. Packaging
+              # failures in a declared project must stop this job.
+              install_target=$(python - <<'PY'
+          import pathlib, tomllib
+          config = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          installable = "project" in config or "build-system" in config or "poetry" in config.get("tool", {})
+          if installable:
+              print(".[dev]" if "dev" in config.get("project", {}).get("optional-dependencies", {}) else ".")
+          PY
+              )
+              if [ -n "$install_target" ]; then python -m pip install -e "$install_target"; fi
+            elif [ -f setup.py ] || [ -f setup.cfg ]; then
+              python -m pip install -e .
+            fi
             pip install ruff mypy pytest
             uses_tool() { grep -qs "$1" pyproject.toml setup.cfg requirements*.txt "$2" 2>/dev/null; }
             if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
@@ -211,6 +233,28 @@ jobs:
           echo "Running: ${EXTRA_COMMAND}"
           bash -c "${EXTRA_COMMAND}" 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
           echo "- extra: \`${EXTRA_COMMAND}\` passed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup Python for scoped evidence
+        if: inputs.system-quality-definition != '' && steps.detect.outputs.pm != 'python'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Evaluate all eight dimensions for the declared scope
+        if: inputs.system-quality-definition != ''
+        uses: KyPython/ai-governance/.github/actions/system-quality@5dcfb5d6d88a26c7a142b459b83df17cc6b2e590
+        with:
+          definition: ${{ inputs.system-quality-definition }}
+
+      - name: Retain scoped evidence including failures
+        if: always() && inputs.system-quality-definition != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: system-quality-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          path: .quality-results/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Parse test results (scorecard)
         id: tests
@@ -295,6 +339,10 @@ jobs:
           REPO: ${{ github.repository }}
           # Single role map owned by Ky; read from main so role changes apply everywhere at once.
           ROLES_URL: https://raw.githubusercontent.com/KyPython/ai-governance/main/roles.yml
+          # GitHub attributes a commit to the account that owns the author email. The policy
+          # step asks for that login; unit tests leave this unset and use declared git fields.
+          RESOLVE_GITHUB_LOGINS: "true"
+          GITHUB_TOKEN: ${{ github.token }}
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -609,9 +657,27 @@ jobs:
                       err("Role gate: cannot verify PR commit history; failing closed.")
                   else:
                       history = r.stdout
+              bot_bases = {i[:-5] for i in (SPEC_AUTHORS | CODERS | {OWNER}) if i.endswith("[bot]")}
+              def add_login(ids, login):
+                  if not login:
+                      return
+                  login = login.strip().lower()
+                  if not login:
+                      return
+                  ids.add(login)
+                  # GitHub noreply local-parts omit the literal "[bot]" suffix.
+                  if login in bot_bases:
+                      ids.add(login + "[bot]")
               def ident(name, email):
+                  ids = {x.lower() for x in (name, email) if x}
                   m = re.match(r"^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$", email or "", re.I)
-                  return {x.lower() for x in (name, email, m.group(1) if m else None) if x}
+                  if m:
+                      add_login(ids, m.group(1))
+                  elif email and "@" in email:
+                      # Agents stamp the roles.yml login as the mailbox (cursoragent@cursor.com).
+                      add_login(ids, email.split("@", 1)[0])
+                  return ids
+              authored = {}
               if history is not None:
                   for line in history.splitlines():
                       parts = line.split("\x1f")
@@ -619,9 +685,30 @@ jobs:
                           err("Role gate: malformed PR commit identity record; failing closed.")
                           continue
                       sha, an, ae, cn, ce = parts
-                      people.append((f"{sha[:7]} author {an} <{ae}>", ident(an, ae)))
+                      author_ids = ident(an, ae)
+                      people.append((f"{sha[:7]} author {an} <{ae}>", author_ids))
+                      authored.setdefault(sha, []).append(author_ids)
                       if ce.lower() != "noreply@github.com":
                           people.append((f"{sha[:7]} committer {cn} <{ce}>", ident(cn, ce)))
+              if os.environ.get("RESOLVE_GITHUB_LOGINS") == "true" and authored:
+                  token = os.environ.get("GITHUB_TOKEN", "")
+                  repo = os.environ.get("REPO", "")
+                  if token and repo:
+                      import urllib.request
+                      for sha, id_sets in authored.items():
+                          try:
+                              req = urllib.request.Request(
+                                  f"https://api.github.com/repos/{repo}/commits/{sha}",
+                                  headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json", "User-Agent": "ai-governance-policy"},
+                              )
+                              with urllib.request.urlopen(req, timeout=20) as resp:
+                                  data = json.loads(resp.read().decode("utf-8"))
+                          except Exception as e:
+                              warn(f"Role gate: could not read GitHub login for {sha[:7]} ({e}). Using the declared git identity only.")
+                              continue
+                          login = ((data.get("author") or {}) if isinstance(data.get("author"), dict) else {}).get("login")
+                          for ids in id_sets:
+                              add_login(ids, login)
               def role_of(ids):
                   if ids & SPEC_AUTHORS: return "spec-author"
                   if ids & CODERS: return "coder"
@@ -1017,10 +1104,12 @@ jobs:
           SECRETS: ${{ needs.secret-scan.result }}
           SECURITY: ${{ needs.security.result }}
           RUN_QUALITY: ${{ inputs.run-quality }}
+          SYSTEM_QUALITY_DEFINITION: ${{ inputs.system-quality-definition }}
+          PREREQUISITE_RESULT: ${{ inputs.prerequisite-result }}
         run: |
           echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS}"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
-          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ]; then
+          if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ] && [ -z "$SYSTEM_QUALITY_DEFINITION" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ] && [ "$PREREQUISITE_RESULT" = "success" ]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "verdict=fail" >> "$GITHUB_OUTPUT"

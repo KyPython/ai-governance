@@ -30,7 +30,22 @@ All jobs run on `pull_request` and on `push` to `main`.
 | `secret-scan` | gitleaks 8.30.1 binary, pinned by checksum, over the **whole PR commit range** (not just the tip). Uses the repo's `.gitleaks.toml` if it has one. Fails closed. | `secret-scan.yml`, `.gitleaks.toml` |
 | `verdict` | A single aggregate check that fails closed. **Make this the one required status check.** It also publishes the scorecard (see below). | n/a |
 
-The gate uses only GitHub-owned actions pinned to commit SHAs, so it also passes in repos that set "allowed actions: selected" and "require SHA pinning".
+External actions are pinned to full commit SHAs. The scoped-evidence helper is
+maintained in this repository and pinned independently by consumers. Repositories
+with selected-action allowlists must explicitly permit the reviewed helper before
+adoption; do not broaden or bypass their allowlists automatically.
+
+The maintained [eight-dimension evidence contract](docs/quality/system-evidence.md)
+adds explicit acceptance criteria, real command receipts and visible remaining
+gaps. Consumers pin `.github/actions/system-quality` to a reviewed full commit
+SHA, or opt in through `system-quality-definition`. A passing scoped CI result
+does not establish whole-system readiness or change Ky's merge authority.
+
+For external stack jobs, pass their actual needs result through
+the reusable workflow's new **prerequisite-result** input under an always-run
+caller. Its verdict accepts only exact success, including when external quality
+is explicitly selected with **run-quality: false**. Review the required-check
+binding; a standalone optional check or a literal success is insufficient.
 
 ### Roles and the spec gate (no spec, no code)
 

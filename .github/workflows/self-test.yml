@@ -18,3 +18,4 @@ jobs:
       require-tests: false
       # Behavioral tests for the policy gate (specs/ai-governance-gate/requirements.md).
       extra-command: python3 -m unittest discover -s tests -v
+      system-quality-definition: .quality/system.json
