@@ -1,4 +1,4 @@
 inspect-ai==0.3.280
-pytest==8.4.2
+pytest==9.0.3
 pandas==3.0.6
 pyarrow==26.0.0

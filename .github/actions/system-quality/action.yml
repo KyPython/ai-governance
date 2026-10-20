@@ -1,0 +1,24 @@
+name: System quality evidence
+description: Run declared scoped checks and retain evidence for all eight quality dimensions.
+inputs:
+  definition:
+    description: Project-relative acceptance and check definition.
+    default: .quality/system.json
+  output-directory:
+    description: Dedicated project-relative evidence output directory.
+    default: .quality-results
+runs:
+  using: composite
+  steps:
+    - name: Run declared checks and validate scoped evidence
+      shell: bash
+      env:
+        SYSTEM_QUALITY_TOOL: ${{ github.action_path }}
+        SYSTEM_QUALITY_DEFINITION: ${{ inputs.definition }}
+        SYSTEM_QUALITY_OUTPUT: ${{ inputs.output-directory }}
+      run: |
+        set -euo pipefail
+        python3 "${SYSTEM_QUALITY_TOOL}/../../../scripts/system_quality.py" run \
+          --root "$GITHUB_WORKSPACE" \
+          --definition "$SYSTEM_QUALITY_DEFINITION" \
+          --output-dir "$SYSTEM_QUALITY_OUTPUT"
