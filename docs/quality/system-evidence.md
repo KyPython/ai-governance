@@ -88,14 +88,19 @@ An external validation job must run the actual stack checks and this composite
 action. A caller can then use the authoritative reusable governance workflow
 with **needs: validate**, **if: always()**, **run-quality: false**, and
 **prerequisite-result** set to the actual needs.validate.result expression.
-The verdict requires exact success; failure, cancellation, skipping and empty
-results all fail. The existing policy and secret-scan jobs still run.
+**run-quality: false** passes only when the caller passes that actual needs
+result and the result is exact success. Empty, failure, skipped, cancelled, and
+wrong-case values fail the verdict. The existing policy and secret-scan jobs
+still run.
 
-The prerequisite defaults to success only for unchanged legacy callers; its
-presence alone does not prove another job ran. Review the actual needs binding,
-required-check identity and pinned workflow source. Do not substitute a literal
-success, a lookalike verdict name or a dependency whose skip is treated as a
-successful required check. Consumers must verify their own required contexts.
+The **prerequisite-result** default is empty. In-workflow quality does not need
+it: an empty value or exact success is acceptable, and any other value fails.
+A literal success string is still accepted by the syntax; callers must pass the
+needs expression, not a hardcoded success. The input's presence alone does not
+prove another job ran. Review the actual needs binding, required-check identity
+and pinned workflow source. Do not substitute a lookalike verdict name or a
+dependency whose skip is treated as a successful required check. Consumers must
+verify their own required contexts.
 
 Deployment remains governed by the canonical instructions. Preserve an existing
 manual-only protected-human route; do not add automatic deployment. Such a route

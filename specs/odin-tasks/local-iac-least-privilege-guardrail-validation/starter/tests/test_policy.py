@@ -19,6 +19,25 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(PolicyViolation, "block every form of public access"):
             validate(template)
 
+    def test_partial_public_access_block_is_rejected(self) -> None:
+        template = copy.deepcopy(build_template())
+        template["Resources"]["ParcelRecordsBucket"]["Properties"][
+            "PublicAccessBlockConfiguration"
+        ] = {"BlockPublicAcls": True}
+
+        with self.assertRaisesRegex(PolicyViolation, "block every form of public access"):
+            validate(template)
+
+    def test_string_false_public_policy_block_is_rejected(self) -> None:
+        template = copy.deepcopy(build_template())
+        public_block = template["Resources"]["ParcelRecordsBucket"]["Properties"][
+            "PublicAccessBlockConfiguration"
+        ]
+        public_block["BlockPublicPolicy"] = "false"
+
+        with self.assertRaisesRegex(PolicyViolation, "block every form of public access"):
+            validate(template)
+
     def test_unencrypted_queue_is_rejected(self) -> None:
         template = copy.deepcopy(build_template())
         del template["Resources"]["ParcelEventsQueue"]["Properties"]["KmsMasterKeyId"]
