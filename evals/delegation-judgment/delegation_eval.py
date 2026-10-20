@@ -212,9 +212,14 @@ def extract_decision(
             for message in messages
             for tc in (getattr(message, "tool_calls", None) or [])
         )
-    match = re.search(r"DECISION:\s*(DELEGATE|SOLO)", output or "")
-    if match:
-        return match.group(1) == "DELEGATE"
+    # Mock mode only: a full DELEGATE/SOLO token at the start of a line.
+    # The last such line wins; a glued token such as DELEGATESOMETHING does not.
+    decisions = re.findall(
+        r"(?m)^\s*DECISION:\s*(DELEGATE|SOLO)\b",
+        output or "",
+    )
+    if decisions:
+        return decisions[-1] == "DELEGATE"
     return None
 
 

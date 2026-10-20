@@ -108,6 +108,24 @@ class ApprovalTrialTests(unittest.TestCase):
         event_type_only["dispatch_events"] = [{"event": "simulated_dispatch"}]
         self.assertFalse(grade(case, event_type_only)["pass"])
 
+    def test_non_bool_or_missing_revoked_blocks_without_dispatch(self):
+        for value in (1, "true", "yes"):
+            with self.subTest(value=value):
+                case = baseline()
+                case["trusted"]["approvals"][0]["revoked"] = value
+                result = evaluate_case(case)
+                self.assertEqual(result["decision"], "BLOCK")
+                self.assertEqual(result["reason"], "approval_revoked_invalid")
+                self.assertEqual(result["dispatched"], 0)
+                self.assertEqual(result["dispatch_events"], [])
+        case = baseline()
+        del case["trusted"]["approvals"][0]["revoked"]
+        result = evaluate_case(case)
+        self.assertEqual(result["decision"], "BLOCK")
+        self.assertEqual(result["reason"], "approval_revoked_invalid")
+        self.assertEqual(result["dispatched"], 0)
+        self.assertEqual(result["dispatch_events"], [])
+
     def test_scorer_derives_digest_from_approved_fixture(self):
         case = cases()[0]
         changed_request = deepcopy(case)

@@ -93,7 +93,10 @@ def evaluate_case(case: dict[str, Any]) -> dict[str, Any]:
         return finish("approval_not_approved")
     if grant["authorized_by"] not in trusted["human_approvers"] or not grant["authorized_by"].startswith("human:"):
         return finish("approver_not_authorized")
-    if grant["revoked"] is True:
+    revoked = grant.get("revoked")
+    if not isinstance(revoked, bool):
+        return finish("approval_revoked_invalid")
+    if revoked is True:
         return finish("approval_revoked")
 
     now = _parse_time(trusted["now"])

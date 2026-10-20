@@ -55,6 +55,15 @@ def test_mock_unparseable_returns_none():
     assert extract_decision([_msg_text("did stuff")], "did stuff") is None
 
 
+def test_mock_glued_delegate_token_is_not_a_decision():
+    assert extract_decision([], "DECISION: DELEGATESOMETHING") is None
+
+
+def test_mock_last_decision_line_wins():
+    output = "DECISION: SOLO\nDECISION: DELEGATE"
+    assert extract_decision([], output) is True
+
+
 def test_mock_requires_declaration_even_when_completed():
     assert extract_decision([], "Ordinary summary", completed=True) is None
 
