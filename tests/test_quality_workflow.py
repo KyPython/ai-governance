@@ -101,8 +101,27 @@ class VerdictControls(unittest.TestCase):
         self.assertIn("verdict=pass",output)
 
     def test_explicit_legacy_external_quality_can_still_skip(self):
-        result,output=self.verdict(quality="skipped",run_quality="false")
+        result,output=self.verdict(quality="skipped",run_quality="false",prerequisite="success")
         self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn("verdict=pass",output)
+
+    def test_run_quality_false_with_empty_prerequisite_fails(self):
+        result,output=self.verdict(quality="skipped",run_quality="false",prerequisite="")
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("verdict=fail",output)
+
+    def test_in_workflow_quality_accepts_empty_prerequisite(self):
+        result,output=self.verdict(quality="success",run_quality="true",prerequisite="")
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn("verdict=pass",output)
+
+    def test_non_success_prerequisite_fails_when_quality_succeeded(self):
+        for run_quality in ("true","false"):
+            for value in ("failure","skipped","cancelled","SUCCESS"):
+                with self.subTest(run_quality=run_quality,value=value):
+                    result,output=self.verdict(quality="success",run_quality=run_quality,prerequisite=value)
+                    self.assertNotEqual(result.returncode,0)
+                    self.assertIn("verdict=fail",output)
 
     def test_evidence_opt_in_cannot_silently_skip_its_quality_job(self):
         result,output=self.verdict(quality="skipped",run_quality="false",definition=".quality/system.json")
@@ -115,6 +134,13 @@ class VerdictControls(unittest.TestCase):
                 result,output=self.verdict(quality="skipped",run_quality="false",prerequisite=value)
                 self.assertNotEqual(result.returncode,0)
                 self.assertIn("verdict=fail",output)
+
+    def test_prerequisite_result_workflow_default_is_empty(self):
+        lines=WORKFLOW.read_text().splitlines()
+        key=next(i for i,line in enumerate(lines) if line.strip()=="prerequisite-result:")
+        window=lines[key+1:key+8]
+        default_lines=[line for line in window if line.strip().startswith("default:")]
+        self.assertEqual(default_lines,['        default: ""'])
 
 
 if __name__=="__main__":unittest.main()
