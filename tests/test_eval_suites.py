@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize(
     "suite",
-    ["approval-gate", "dispatch-regression-20case", "delegation-judgment"],
+    ["approval-gate", "dispatch-regression-20case", "delegation-judgment", "arfbench"],
 )
 def test_suite_regressions(suite):
     suite_root = ROOT / "evals" / suite

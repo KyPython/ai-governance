@@ -3,4 +3,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.eval
+evals/arfbench/data/ts/
 .quality-results/
