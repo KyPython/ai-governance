@@ -78,17 +78,17 @@ class InstallFailureControls(unittest.TestCase):
 
 
 class VerdictControls(unittest.TestCase):
-    def verdict(self,quality="success",policy="success",secrets="success",run_quality="true",definition="",prerequisite="success"):
+    def verdict(self,quality="success",policy="success",secrets="success",security="success",run_quality="true",definition="",prerequisite="success"):
         with tempfile.TemporaryDirectory(prefix="quality-verdict-fixture-") as directory:
             root=Path(directory)
             script=root/"verdict.sh";script.write_text(workflow_step("      - id: v"))
-            environment={"PATH":os.defpath,"QUALITY":quality,"POLICY":policy,"SECRETS":secrets,"RUN_QUALITY":run_quality,
+            environment={"PATH":os.defpath,"QUALITY":quality,"POLICY":policy,"SECRETS":secrets,"SECURITY":security,"RUN_QUALITY":run_quality,
                          "SYSTEM_QUALITY_DEFINITION":definition,"PREREQUISITE_RESULT":prerequisite,"GITHUB_OUTPUT":str(root/"output"),"GITHUB_STEP_SUMMARY":str(root/"summary")}
             result=subprocess.run(["/bin/bash",str(script)],cwd=root,env=environment,capture_output=True,text=True,timeout=10)
             return result,(root/"output").read_text()
 
     def test_required_jobs_fail_closed(self):
-        for key in ("quality","policy","secrets"):
+        for key in ("quality","policy","secrets","security"):
             for status in ("failure","cancelled","skipped"):
                 with self.subTest(job=key,status=status):
                     result,output=self.verdict(**{key:status})
