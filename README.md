@@ -42,10 +42,12 @@ SHA, or opt in through `system-quality-definition`. A passing scoped CI result
 does not establish whole-system readiness or change Ky's merge authority.
 
 For external stack jobs, pass their actual needs result through
-the reusable workflow's new **prerequisite-result** input under an always-run
-caller. Its verdict accepts only exact success, including when external quality
-is explicitly selected with **run-quality: false**. Review the required-check
-binding; a standalone optional check or a literal success is insufficient.
+the reusable workflow's **prerequisite-result** input under an always-run
+caller. The default is empty. In-workflow quality does not need it.
+**run-quality: false** passes only when the caller passes the actual needs
+result and that result is success. A literal success string is still accepted
+by the syntax; callers must pass the needs expression, not a hardcoded success.
+Review the required-check binding; a standalone optional check is insufficient.
 
 ### Roles and the spec gate (no spec, no code)
 
@@ -167,6 +169,7 @@ The scorecard only reports; the pass/fail decision never reads it. Use it to see
 
 ### Inputs
 
+`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off"), `prerequisite-result` ("").
 `node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off").
 
 ## Opt a repo in

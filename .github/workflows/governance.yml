@@ -77,9 +77,12 @@ on:
         type: string
         default: ""
       prerequisite-result:
-        description: Actual needs result of an external required validation job; only success is accepted.
+        description: >
+          Actual needs result of an external required validation job. Default is empty.
+          In-workflow quality accepts empty or exact success. With run-quality false, only
+          exact success from the caller's needs expression passes.
         type: string
-        default: "success"
+        default: ""
     outputs:
       verdict:
         description: "pass or fail"
@@ -242,7 +245,7 @@ jobs:
 
       - name: Evaluate all eight dimensions for the declared scope
         if: inputs.system-quality-definition != ''
-        uses: KyPython/ai-governance/.github/actions/system-quality@5dcfb5d6d88a26c7a142b459b83df17cc6b2e590
+        uses: KyPython/ai-governance/.github/actions/system-quality@be5daf11d1571908589d36003e7f65464d392d9d
         with:
           definition: ${{ inputs.system-quality-definition }}
 
@@ -1113,6 +1116,21 @@ jobs:
           SYSTEM_QUALITY_DEFINITION: ${{ inputs.system-quality-definition }}
           PREREQUISITE_RESULT: ${{ inputs.prerequisite-result }}
         run: |
+          echo "quality=${QUALITY} policy=${POLICY} secret-scan=${SECRETS} run-quality=${RUN_QUALITY} prerequisite=${PREREQUISITE_RESULT}"
+          echo "### verdict: quality=${QUALITY}, policy=${POLICY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
+          quality_ok=false
+          if [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ] && [ -z "$SYSTEM_QUALITY_DEFINITION" ]; }; then
+            quality_ok=true
+          fi
+          prerequisite_ok=false
+          if [ "$RUN_QUALITY" = "false" ]; then
+            if [ "$PREREQUISITE_RESULT" = "success" ]; then
+              prerequisite_ok=true
+            fi
+          elif [ -z "$PREREQUISITE_RESULT" ] || [ "$PREREQUISITE_RESULT" = "success" ]; then
+            prerequisite_ok=true
+          fi
+          if [ "$quality_ok" = "true" ] && [ "$POLICY" = "success" ] && [ "$SECRETS" = "success" ] && [ "$prerequisite_ok" = "true" ]; then
           echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS}"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
           if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ] && [ -z "$SYSTEM_QUALITY_DEFINITION" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ] && [ "$PREREQUISITE_RESULT" = "success" ]; then
