@@ -15,6 +15,23 @@ Upstream references:
 - [Gherkin reference](https://cucumber.io/docs/gherkin/reference/)
 - [Cucumber-JS maintained runtime requirements](https://github.com/cucumber/cucumber-js/blob/main/package.json)
 
+## Default workflow: BDD discovery → SDD → BDD formulation → TDD → implementation → independent verification
+
+**Applicability:** For every new or changed user-visible behavior, authorization boundary, cross-component effect, state transition, or consequential failure path, consider a *brief behavior-discovery checkpoint* before Kiro writes a spec. For refactors, security remediation, tiny technical changes, mature unit-tested components, generated code and upstream forks, use existing tests where sufficient; do not force a Gherkin runner. The absence of new .feature files is not failure if observable examples already have trustworthy coverage.
+
+1. **Behavior discovery (before SDD):** Owner/product viewpoint, specification author and verifier identify the actor's outcome, actual trigger, rules, counterexamples, unknowns, and measurable success/failure. Source actual requirements and behavior. Distinguish accepted examples from AI-proposed examples; the owner retains formative judgments. Do not fabricate agreement or a stakeholder workshop.
+2. **SDD specification and approval:** Kiro (or an explicitly permitted, truthfully attributed owner override) writes requirements, design, and tasks in a **spec-only PR**. Link each scenario/rule to exact stable EARS requirement IDs and existing business, security or state-machine constraints. Owner reviews and merges the spec before code. BDD examples *inform* SDD; they do not bypass the spec gate or replace requirement sentences.
+3. **BDD formulation (before code):** Express just the agreed high-value examples as domain-level `Given/When/Then` cases (or equivalently precise acceptance examples when a separate runner adds no value). Freeze positive, adverse, ambiguity, denied, timeout and idempotent outcomes *as applicable*. Any material spec ambiguity goes back to the spec author and owner; never silently change an accepted EARS sentence to fit the test.
+4. **ATDD + TDD red (authorized code phase):** One assigned coder links a scenario to production behavior through real step definitions/test fixtures and demonstrates the expected **failure before implementing the missing behavior**. Add narrower unit/contract tests as needed; verify that deliberate violation/negative controls actually fail. Do not count unmatched steps, forced skips, fabricated results, or code text inspection as executable acceptance.
+5. **Minimal implementation / green:** Make the smallest approved change that passes the behavior scenario and relevant unit tests; preserve controls, side-effect permissions and existing workflows. Re-run the full original test suite. Do not turn each spec sentence into a redundant Gherkin scenario.
+6. **Changed independent verification and human merge:** Different verifier reproduces positive/negative cases, source revision, install, lint, typecheck, build, original tests, real BDD execution if selected, and required governance/security/formal checks. Record blocked and skipped honestly. Owner alone merges; deployment remains separately gated. Retrospectively correct specs through a new approved spec PR if real behavior differs.
+
+**Compact scenario-review checklist (not a test result):** Who experiences the outcome? What observable action triggers it? Which business rule/invariant? What contrasting example could disprove our assumption? What must the system refuse or leave unknown? What existing test already covers this? What source/license/authority permits the fixture? Which requirement ID and eventual executable test prove this *same* outcome? Does adding Cucumber improve communication or verification rather than count?
+
+**Decision outcome per scope:** `ADOPT CUCUMBER`, `BDD DISCOVERY ONLY`, `EXISTING TESTS SUFFICIENT`, or `BLOCKED: SPEC / AUTHORIZATION / ENVIRONMENT`. A documented `EXISTING TESTS SUFFICIENT` is a valid successful triage result. Do not enforce a universal package install or claim this draft guide is already the default policy on main.
+
+Official BDD workflow: https://cucumber.io/docs/bdd/ (Discovery → Formulation → Automation). Official Gherkin reference: https://cucumber.io/docs/gherkin/reference/ .
+
 ## Per-repository decision (before editing)
 
 1. Inspect that repository's `AGENTS.md`, required approvals, branch rules, existing issue/spec, test scripts, lockfile, runtime version, CI job, and any mutation or monetization gate.
@@ -28,17 +45,15 @@ Upstream references:
 6. Wire a true failing-on-error command into the repo's ordinary tests / CI, preserve the original suites and provider/secret boundaries, and verify dependency lock/engine compatibility.
 7. Report **actual** install, lint, typecheck, test, build, CI and governance checks separately. Missing, skipped, blocked and unexecuted are not green.
 
-## Proposed pilot: Claim Checker (pending spec acceptance)
+## First implementation qualification — no automatic pilot selection
 
-**Repository:** `KyPython/claim-checker`. It already uses Node's test runner, Playwright and offline fixtures and has an extensive draft requirements spec at `specs/claim-checker/requirements.md`. Do **not** start a code PR merely because that draft exists. First resolve its owner-approved spec state and its issue. The current CI `FREE_CI_ENABLED` guard can skip tests; a skipped workflow is not acceptance.
+Read-only examination of the current tests found that the initially proposed Claim Checker abstention example is **already asserted** in `KyPython/claim-checker/tests/worker.test.js` (ungrounded decisive verdict becomes `UNVERIFIABLE`, and absent/faulty evidence is handled by the existing worker harness). Adding the same example under Cucumber would increase maintenance without clear new evidence. Its current spec is marked draft; CI may skip under `FREE_CI_ENABLED`. **Do not install Cucumber there until a different real cross-boundary acceptance gap is established and the spec is approved.**
 
-Candidate behavior to specify and *only then* automate (subject to source spec and acceptance IDs):
+`KyPython/effectproof` already carries `commit-ack-lost-idempotent.yaml` and `commit-ack-lost-duplicate.yaml` fault scenarios and Jest tests. BDD discovery could improve cross-role agreement, but converting those scenarios to Gherkin without a demonstrated missing user-observable contract is duplication. Its `node >=18` package engine is also below the runtime required by current Cucumber-JS versions; first make a deliberate, tested Node compatibility decision if adoption eventually earns its place.
 
-> Given a submitted factual claim with no qualifying, same-proposition source evidence  
-> When the genuine offline verdict path completes with the specified response fixture  
-> Then the user receives `UNVERIFIABLE` and an actionable settle-it note, rather than a fabricated decisive verdict.
+`KyLamportLogic/ky-cloud-control-plane` has rich Python unittest, OPA and TLA+ coverage. A stakeholder-readable acceptance example such as *owner-authorized effect receives no conclusive receipt and must remain unconfirmed* may be valuable **only if** it tests a behavior distinct from its existing verification. Prefer `pytest-bdd` only if a reviewed pytest transition/fixture strategy is justified; its current controller suite is `unittest`. Do not replace OPA/TLA+ with Gherkin.
 
-Compare the new scenario with the existing worker tests and evaluation harness. If this outcome is already sufficiently covered and readable, **do not duplicate it just to use Cucumber**. Check separately whether a scenario genuinely needs a browser; prefer no browser for service-level behavior. No live Puter, Gemini, OpenRouter or other provider calls, new credentials, paid usage, or output claims.
+**Pilot selection gate:** choose exactly one of the above or another owner-controlled application after comparing source evidence, existing tests and requirement coverage. Require a documented untested/poorly communicated observable behavior and a positive+negative reproduction plan. Then follow the spec-first role boundaries. Until that evidence exists, **workflow documentation is the only implemented change in this PR**.
 
 ## Subsequent candidates, not automatic installation
 
@@ -65,7 +80,7 @@ Compare the new scenario with the existing worker tests and evaluation harness. 
 
 ## Follow-through
 
-1. Kiro/owner produces approved spec(s) linked to #238. If no authorized spec channel exists, leave the work blocked and report the precise blocker.
-2. Implement and independently verify **one** pilot on its own code branch/PR, including failing negative control and ordinary CI.
+1. Run behavior discovery on one justified capability, capture the accepted rules and counterexamples, and have Kiro/owner produce an approved spec linked to #238. If no authorized spec channel exists, leave the work blocked and report the precise blocker.
+2. Only if a real acceptance gap warrants the runner, implement and independently verify **one** pilot on its own code branch/PR, including failing negative control and ordinary CI.
 3. Decide repo-by-repo whether the pilot creates evidence or comprehension value; avoid redundant adapters and test-count inflation.
 4. Record actual PRs, CI, remaining gaps and owner merge decisions in #238. Do not claim `Cucumber rolled out everywhere` from documentation alone.
