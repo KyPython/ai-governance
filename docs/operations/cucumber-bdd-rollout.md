@@ -1,6 +1,6 @@
 # Cucumber / Gherkin behavior testing — cross-repo adoption guide (proposal)
 
-**Status:** proposed documentation only; NOT an implemented testing framework, approved Kiro spec, or new CI policy.  
+**Status:** merged **documentation proposal** (PR #239, 2026-11-01, merge commit `0b137992a45873beaf6e68764649237d2bb31fd0`); NOT an implemented testing framework, owner-approved Kiro spec, or new CI policy. The subsequent local/cloud parity change here remains a GPT-6-authored **proposal for owner review**, not a G0–G6 gate.  
 **Canonical work record:** [KyPython/ai-governance#238](https://github.com/KyPython/ai-governance/issues/238).  
 **Authorship:** GPT-6 drafted this guide using the owner's connected GitHub access on the owner's October 29, 2026 request. It is not Kiro-authored and does not assert owner acceptance.  
 **Merge authority:** owner only. No agent may merge or deploy this proposal.
@@ -14,6 +14,23 @@ Upstream references:
 - [Cucumber-JS](https://cucumber.io/docs/installation/javascript/)
 - [Gherkin reference](https://cucumber.io/docs/gherkin/reference/)
 - [Cucumber-JS maintained runtime requirements](https://github.com/cucumber/cucumber-js/blob/main/package.json)
+
+## Execution-location neutrality — added 2026-11-01, pending Kiro spec and owner adoption
+
+**Goal:** The *same* BDD/SDD/TDD/implementation approvals, scope restrictions, failure handling and evidence obligations apply whether an agent executes on Ky's local Mac, in a disposable container/VM, in a provider-managed cloud workspace, or via a remote IDE. **Location, plan or tool choice is never a waiver.** This is a **source-backed proposed contract**, not a claim of local sandbox installation or cloud runtime deployment. Author: GPT-6, 2026-11-01; no owner stage receipt created.
+
+**Canonical responsibilities:** This guide and [issue #238](https://github.com/KyPython/ai-governance/issues/238) own the engineering-stage requirements and acceptance conditions. The existing [Ky Cloud Control Plane parity document](https://github.com/KyLamportLogic/ky-cloud-control-plane/blob/main/docs/CLOUD_PARITY.md) owns its executor/receipt adapter design and historical offline evidence; [its issue #4](https://github.com/KyLamportLogic/ky-cloud-control-plane/issues/4) owns any AWS resource, cost, activation or retirement decision. Do not create a second stage-policy engine, scheduler, task tracker or always-on AWS deployment simply to obtain parity.
+
+**Kiro specification must make these invariants executable before Codex implementation:**
+
+1. **Common decision contract:** At the same canonical policy/version, owner authorization, stage, role, accepted inputs and content digests, target path scope and revocation state, local and cloud requests must produce the same admission decision and reason. A provider-specific adapter may change *how* it enforces isolation, not *what* actions are authorized.
+2. **Two independent barriers:** At dispatch/pre-mutation, agents operate only within a proved authorized, stage-scoped isolated workspace (real read-only upstream inputs, bounded writable output, separated secrets/tokens and constrained network). At publication/merge, a separate trusted verifier/publisher checks the proposed changed files, owner-signed predecessor lineage and stage receipt, exact source/head, tests, and protected GitHub checks. A local tool's optional CLI/hook or self-declared compliance is not equivalent to kernel-enforced isolation.
+3. **Real actor authority:** No agent receives Ky's personal access token, private approval key, production secrets or unconstrained publication authority. Git author fields, a Verified commit label, model output, and GitHub Actions OIDC alone cannot prove owner or coding-agent authorship. The trusted issuer/publisher must authenticate independently; missing proof means **BLOCKED**, not a fabricated receipt.
+4. **Offline safe operation:** Local research, neutral drafts, diff inspection and deterministic tests may run without AWS and, where safe, without network. Lack of fresh remote approval, repository required-check status, live provider isolation or auth means no self-authorized progression to mutation or publication. Preserve **PASS / FAIL / BLOCKED / UNKNOWN / NOT_RUN** at the actual observed scope.
+5. **Changed verification:** Demonstrate V1 out-of-order write, V2 forged actor/path crossing, V3 harness failure mislabeled RED, V4 vacuous trace/assertions, V5 stale/revoked receipt replay, and V6 genuinely authorized end-to-end success *separately in at least one representative isolated local and one provider-managed cloud environment*. Verify denial for the **correct reason at the correct enforcement boundary**, and distinguish offline policy simulation from real provider rejection. The V6 positive control must reach owner-review eligibility only, never automatically merge/deploy.
+6. **Cost and compatibility:** Reuse the existing control-plane offline parity/invariant tests, repository-specific mutation preflight (`pnpm ai:mutation:check --scope ... --target ...` where applicable), `ai-governance / verdict`, Human Skill Retention and current owner gates. Do not require a running EC2/AWS control plane; do not install new agents, secrets, recurring jobs or a new policy framework without separate approved scope. If a provider cannot meet the same isolation and proof bar, leave its implementation lane **BLOCKED** rather than silently applying weaker rules.
+
+The previously merged documentation-only PR #239 does **not** establish this as deployed policy. Kiro (or the existing separately authenticated owner override) must first submit a **specification-only** PR with stable EARS requirements/design/tasks and V1–V6 traceability. Owner review/merge of that spec is required before a separately authorized Codex implementation. The protected role map, CI caller, mutation gate, and approvals remain unchanged by this paragraph.
 
 ## Default workflow: BDD discovery → SDD → BDD formulation → TDD → implementation → independent verification
 
@@ -67,7 +84,7 @@ Each checkpoint has a named **human owner decision** with `APPROVE / REJECT / RE
 
 ### Status at authorship
 
-No new `AGENTS.governance.md`, `roles.yml`, validator, reusable workflow, Cucumber dependencies, feature files, or code modified by this section. **G0–G6 are proposed requirements, not functioning GitHub status checks.** Owner's request to strengthen governance is explicit, but does not bypass the existing Kiro spec-first, code/CI and human-merge boundaries. This draft PR must remain separate from the Kiro-authored spec PR and any eventual governance implementation PR.
+No new `AGENTS.governance.md`, `roles.yml`, validator, reusable workflow, Cucumber dependencies, feature files, or code modified by this section. **G0–G6 are proposed requirements, not functioning GitHub status checks.** Owner's request to strengthen governance is explicit, but does not bypass the existing Kiro spec-first, code/CI and human-merge boundaries. The merged documentation proposal (#239) remains separate from the required Kiro-authored spec PR and any separately authorized governance implementation PR.
 
 ## Per-repository decision (before editing)
 
