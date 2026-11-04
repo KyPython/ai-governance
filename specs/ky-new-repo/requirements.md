@@ -40,3 +40,8 @@ bootstrap is reviewable before anything executes.
 2. KYNEW-2.2 WHEN --dry-run targets an org THEN the plan SHALL include
    ruleset verification; WHEN it targets a user THEN the plan SHALL include
    the protect step.
+3. KYNEW-2.3 WHEN the bundle is installed THEN it SHALL include
+   .github/dependabot.yml with weekly github-actions updates plus the
+   package ecosystem matching --ci (npm for node, pip for python).
+4. KYNEW-2.4 WHEN --template is passed THEN the script SHALL create from
+   KyPython/repo-starter, which SHALL exist.
