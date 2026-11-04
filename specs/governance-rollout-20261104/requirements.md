@@ -13,8 +13,8 @@ After this rollout every repo Ky owns calls the shared `ai-governance / verdict`
 gate, carries the `AI-GOVERNANCE:v1` agent rules, and protects its default branch
 with the checks-are-the-gate model. New repos get an opt-in PR within 24 hours of
 creation from a scheduled sweep, and a starter template gives them the gate files
-from the first commit. Two private org repos stay blocked until Ky decides the
-plan question (ROLLOUT-2.4).
+from the first commit. Two private org repos stay blocked until Ky resolves the
+failed Team payment (ROLLOUT-2.4).
 
 The rollout opens PRs and applies branch protection. It never merges, deletes, or
 changes visibility. Only Ky merges, per the governance rule that checks are the
@@ -85,10 +85,12 @@ the gate, so that green checks are what allow a merge.
 3. ROLLOUT-2.3 The rollout SHALL apply protection only through `optin.sh
    --protect` after the verdict has passed, and SHALL never merge, delete, or
    change visibility.
-4. ROLLOUT-2.4 IF branch protection returns 403 (private repo on a Free plan)
-   THEN the rollout SHALL record the repo as blocked with the plan reason and
-   SHALL NOT change its visibility or spend on a plan upgrade. Blocked repos:
-   KyLamportLogic/LamportLogic, KyLamportLogic/ky-cloud-control-plane.
+4. ROLLOUT-2.4 IF branch protection returns 403 (private repo; the org holds
+   a Team subscription whose payment authorization failed, so plan features
+   are suspended until Ky resolves billing with the bank) THEN the rollout
+   SHALL record the repo as blocked with the billing reason and SHALL NOT
+   change its visibility. Blocked repos: KyLamportLogic/LamportLogic,
+   KyLamportLogic/ky-cloud-control-plane.
 
 ### Requirement 3: Tests before protection (ROLLOUT-3)
 
