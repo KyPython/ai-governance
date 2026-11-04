@@ -4,6 +4,33 @@ Ky's AI governance, tests, and CI rules live here and apply to every repo AI age
 
 **The gate:** agent code cannot merge to `main` (and so cannot deploy) unless the repo's own CI and the `ai-governance / verdict` check pass. Checks are the gate, and only Ky merges.
 
+## Where this repo sits
+
+Two repos share the "governance" name. They are different layers, not duplicates:
+
+```text
+KyPython/ai-governance (this repo)          KyLamportLogic/buildlogic-governance
+CI enforcement: the merge gate              Runtime libraries + shared checks
+- reusable governance.yml (policy,          - npm packages: preflight, kill switch,
+  quality, security, secret-scan,             egress, redaction, rate limiting,
+  verdict), roles.yml, spec gate              structured logging, CLI
+- optin.sh / sweep.sh rollout,            - engineering-doctor repo hygiene
+  ky-new-repo bootstrapper, AGENTS         - reusable a11y + diff-hygiene
+  canonical section                           workflows (see below)
+- private Ky policy: roles, spec
+  authorship, sweep access to everything
+```
+
+Rule of thumb: if it decides whether code **merges**, it lives here. If it runs
+**inside** shipped code (or as a public package), it lives in
+`KyLamportLogic/buildlogic-governance`. Dependency direction is one-way: the
+toolkit consumes this repo's gate (caller workflow); this repo never depends on
+the toolkit's code (docs may reference it).
+
+Known wrinkle: the reusable a11y + diff-hygiene workflows are GitHub-specific
+but hosted in the toolkit repo for now. See
+`docs/operations/reusable-workflow-hosting.md` for the stay-vs-migrate decision.
+
 ## What's here
 
 | Path | Purpose |
