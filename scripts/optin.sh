@@ -126,7 +126,8 @@ fi
 # ---- opt-in PR ----
 api GET "/repos/$REPO/branches/$BRANCH" >/dev/null || true
 [ "$(st)" = 404 ] || { echo "Branch $BRANCH already exists on $REPO; review that PR instead." >&2; exit 1; }
-GOV_SHA=$(api GET "/repos/$GOV_REPO/commits/main" | jget 'd["sha"]')
+# AI_GOVERNANCE_REF pins a ref other than main (e.g. an unmerged gate PR head) during a rollout.
+GOV_SHA=$(api GET "/repos/$GOV_REPO/commits/${AI_GOVERNANCE_REF:-main}" | jget 'd["sha"]')
 SECTION=$(curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github.raw" \
   "https://api.github.com/repos/$GOV_REPO/contents/AGENTS.governance.md?ref=$GOV_SHA")
 TEMPLATE=$(curl -fsS -H "Authorization: token $TOKEN" -H "Accept: application/vnd.github.raw" \
@@ -155,6 +156,12 @@ elif "AI-GOVERNANCE:v1" not in p.read_text():
     lines = p.read_text().splitlines(keepends=True)
     i = 1 if lines and lines[0].startswith("# ") else 0
     p.write_text("".join(lines[:i]) + ("\n" if i else "") + sec + "\n" + "".join(lines[i:]))
+else:  # refresh an older copy of the canonical section
+    import re
+    t = p.read_text()
+    m = re.search(r"<!-- AI-GOVERNANCE:v1.*?\*\*Deploys follow governance\.\*\*[^\n]*\n", t, re.S)
+    if m:
+        p.write_text(t[:m.start()] + sec + t[m.end():])
 PY
 if [ ! -f .github/CODEOWNERS ] && [ ! -f CODEOWNERS ] && [ ! -f docs/CODEOWNERS ]; then
   printf '# Every path requires human (Ky) review.\n* @%s\n' "$LOGIN" > .github/CODEOWNERS
@@ -169,8 +176,8 @@ if [ -d .systems-thinking/contracts ]; then
   "pattern": "Governance rules lived only in LamportLogic, so agent changes elsewhere could merge without the same checks.",
   "structure": "Each repository carried its own partial CI; there was no shared, versioned gate or required check binding agents to the rules.",
   "archetype": "Shifting the Burden: per-repo manual review compensates for a missing structural gate.",
-  "intervention": "Call the SHA-pinned reusable workflow from KyPython/ai-governance and require its verdict check plus code-owner approval on main.",
-  "leading_indicators": "Every PR shows a green or red 'ai-governance / verdict' check; no merge to main without it and Ky's approval.",
+  "intervention": "Call the SHA-pinned reusable workflow from KyPython/ai-governance and require its verdict plus this repo's CI on main (checks are the gate; only Ky merges). Fixed agent roles from roles.yml: Kiro writes specs, coders implement specs already on main.",
+  "leading_indicators": "Every PR shows a green or red 'ai-governance / verdict' check and a scorecard; code PRs cite a spec on main and tests trace to its IDs.",
   "transfer": "Opt any repository in with ai-governance/scripts/optin.sh so all agent-touched repos share one gate."
 }
 JSON
@@ -181,7 +188,9 @@ gitc push -q origin "$BRANCH"
 PR_BODY="Opts this repo into the shared AI governance gate from [$GOV_REPO](https://github.com/$GOV_REPO) (pinned to \`$GOV_SHA\`).
 
 - \`.github/workflows/ai-governance.yml\` calls the reusable gate (install, lint, type-check, test, build, policy, gitleaks) on PRs and pushes to \`$DEFAULT_BRANCH\`.
-- \`AGENTS.md\` gains the canonical \`AI-GOVERNANCE:v1\` section all agents must follow.
+- \`AGENTS.md\` gains the canonical \`AI-GOVERNANCE:v1\` section all agents must follow. Rule 2 sets fixed roles from \`roles.yml\`: Kiro writes specs, coders implement specs already on main (one task per PR, cross-reviewed), and Ky merges.
+- The gate includes the **spec gate**: a code PR needs an issue, a \`Spec: specs/<slug>\` that already exists on the default branch, no spec edits, and tests citing its criterion IDs. It also includes the **role gate**: only spec authors may touch \`specs/\` or \`.kiro/specs/\`. Each run publishes a scorecard (\`ai-governance-summary\` artifact).
+- This PR changes only a workflow, docs, CODEOWNERS and a contract, so it is exempt from the spec gate by path rule.
 
 Systems thinking: event = AI agents open PRs here; pattern = governance lived only in LamportLogic; structure = no shared, versioned gate; intervention = SHA-pinned reusable gate + required checks; leading indicator = every PR shows \`$CHECK\`; transfer = same opt-in for every repo.
 

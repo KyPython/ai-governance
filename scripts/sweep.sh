@@ -13,7 +13,9 @@
 #      branch), apply the protection model with optin.sh --protect. Required: PR; repo CI that
 #      ran on a PR + verdict; strict; conversation resolution; linear history; no
 #      force-push/deletion; enforce on admins; 0 approvals.
-#   3. Already protected with the verdict required: left alone.
+#   3. Already protected with the verdict required: left alone, but the pinned gate SHA is checked.
+#      A pin older than the spec/role gate (no roles.yml support) is reported as "stale-pin".
+#   Set AI_GOVERNANCE_REF to pin new opt-ins to a ref other than main (e.g. an unmerged gate PR).
 # Never merges, deletes, or changes visibility. Private repos on free plans report the 403.
 #
 # AUTH: runs with whatever GITHUB_TOKEN is configured, and every PR/commit is authored as that
@@ -67,6 +69,14 @@ def verdict_ok(repo, ref):
     s,c=api("GET", f"/repos/{repo}/commits/{urllib.parse.quote(ref,safe='')}/check-runs?check_name={urllib.parse.quote(CHECK)}&filter=latest")
     runs=(c or {}).get("check_runs",[]) if s==200 else []
     return (runs[0]["conclusion"] if runs else None)
+import re, base64
+def pin_has_role_gate(repo, ref):
+    s,c=api("GET", f"/repos/{repo}/contents/.github/workflows/ai-governance.yml?ref={urllib.parse.quote(ref,safe='')}")
+    if s!=200: return None
+    m=re.search(r"KyPython/ai-governance/\.github/workflows/governance\.yml@([0-9a-f]{40})", base64.b64decode(c["content"]).decode())
+    if not m: return False
+    s,g=api("GET", f"/repos/KyPython/ai-governance/contents/.github/workflows/governance.yml?ref={m.group(1)}")
+    return s==200 and "ROLES_URL" in base64.b64decode(g["content"]).decode()
 def run(args):
     env=dict(os.environ, GITHUB_TOKEN=T)
     p=subprocess.run([os.path.join(DIR,"optin.sh"),*args], capture_output=True, text=True, env=env)
@@ -84,7 +94,12 @@ for r in sorted(repos, key=lambda r:r["full_name"].lower()):
     s,prot=api("GET", f"/repos/{fn}/branches/{db}/protection")
     required=[c["context"] for c in ((prot or {}).get("required_status_checks") or {}).get("checks",[])] if s==200 else []
     if s==200 and CHECK in required and (prot.get("enforce_admins") or {}).get("enabled"):
-        rows.append((fn,"ok","protected; verdict required" + ("" if gated else " (opt-in PR not merged yet)"))); continue
+        branch_exists0 = api("GET", f"/repos/{fn}/branches/{urllib.parse.quote(BRANCH,safe='')}")[0]==200
+        pin_ref = db if gated else (BRANCH if branch_exists0 else db)
+        pin = True if fn=="KyPython/ai-governance" else pin_has_role_gate(fn, pin_ref)
+        if pin is False:
+            rows.append((fn,"stale-pin",f"protected, but the gate pinned on {pin_ref} predates the spec/role gate; bump the SHA in a PR")); continue
+        rows.append((fn,"ok","protected; verdict required; spec/role gate pinned" + ("" if gated else " (opt-in PR not merged yet)"))); continue
     if s==403:
         prot_note="branch protection unavailable (private repo on free plan: needs Pro/Team or public)"
     else:

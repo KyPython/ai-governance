@@ -1,0 +1,40 @@
+{
+  "schema": "ODIN_SOURCE_RECOVERY_BLOCKER_V1",
+  "row_id": "3f38621e-0a7a-81ac-95c5-dc0a9aaa211a",
+  "source_repo": "https://github.com/KyPython/oauth-callback-state",
+  "commit": "c65f9343be723ea36289db541b8f373883cbfe8a",
+  "status": "publication_evidence_pending",
+  "blocker": "The worker has no authenticated GitHub session, the private source repository returns HTTP 404 to an unauthenticated API request, and an unauthenticated Git fetch cannot read a username in the non-interactive environment. The immutable commit, its branch, file tree, exact UTF-8 bytes, ordinary-path baseline, and any existing pull request therefore cannot be independently retrieved or verified.",
+  "verification_attempts": [
+    {
+      "command": "gh auth status",
+      "exit_code": 1,
+      "result": "You are not logged into any GitHub hosts."
+    },
+    {
+      "command": "GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/KyPython/oauth-callback-state.git",
+      "exit_code": 128,
+      "result": "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+    },
+    {
+      "command": "curl https://api.github.com/repos/KyPython/oauth-callback-state",
+      "exit_code": 0,
+      "http_status": 404,
+      "result": "Not Found"
+    },
+    {
+      "command": "git cat-file -t c65f9343be723ea36289db541b8f373883cbfe8a",
+      "exit_code": 128,
+      "result": "fatal: git cat-file: could not get object info"
+    }
+  ],
+  "pending_evidence": [
+    "branch",
+    "pr_title",
+    "pr_url",
+    "complete exact UTF-8 starter file set encoded as path and content_b64",
+    "byte-identity verification against c65f9343be723ea36289db541b8f373883cbfe8a",
+    "ordinary-path baseline command and result"
+  ],
+  "integrity_statement": "No starter source was rebuilt, regenerated, repaired, rehearsed, duplicated, or changed. No pull request URL, credential, approval, readiness claim, human completion, recording, review, transfer, or paid Odin admission flag was manufactured. This blocker record is not an ODIN_STARTER_MANIFEST and must not be treated as completion."
+}

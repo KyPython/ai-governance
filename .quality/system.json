@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "system_id": "ai-governance-evidence-tooling",
+  "intended_use": "Validate scoped CI acceptance/evidence and retain honest all-eight accounting; preserve independent merge and readiness authority.",
+  "environment": "offline-synthetic-governance-regressions",
+  "requirements": [
+    {
+      "path": "docs/quality/system-evidence.md",
+      "sha256": "18716543c0585d455bae2e98dfdc43c46bfebcb840ecb9df60804febb1b86b0f"
+    }
+  ],
+  "checks": {
+    "governance-regressions": {
+      "command": [
+        "{python}",
+        "-m",
+        "pytest",
+        "tests",
+        "-q"
+      ],
+      "timeout_seconds": 300,
+      "inputs": [
+        "scripts/system_quality.py",
+        "tests/*.py",
+        ".github/workflows/governance.yml",
+        ".github/actions/system-quality/action.yml",
+        "evals/**/*.py",
+        "evals/**/*.json",
+        "requirements.txt"
+      ],
+      "scope": "Real maintained runner negative/positive fixtures and published synthetic agent-evaluation suites; no production/provider calls."
+    }
+  },
+  "dimensions": {
+    "correctness": {
+      "acceptance_criteria": [
+        "Declared fixture checks return actual command outcomes; failed or missing evidence cannot yield a passing result."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "These tests cover known fixtures, not arbitrary repository or application behavior."
+      ],
+      "next_check": "Extend acceptance fixtures for new supported project patterns."
+    },
+    "security": {
+      "acceptance_criteria": [
+        "The runner rejects escaping paths, changed evidence, forged context and CI-only readiness promotion."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Dependency vulnerabilities, endpoint authorization and malicious-runner resistance are not established."
+      ],
+      "next_check": "Review pinned action provenance and project-specific execution isolation."
+    },
+    "reliability": {
+      "acceptance_criteria": [
+        "Timeout and failed-run recovery controls retain failure and permit a later successful fixture rerun."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Long-running concurrency, host crash and load behavior are not qualified."
+      ],
+      "next_check": "Exercise concurrent/crashed workers in an isolated intended runner."
+    },
+    "data_integrity": {
+      "acceptance_criteria": [
+        "Evidence writes preserve unowned output directories and source changes invalidate receipts."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Artifacts do not constitute an independently restored source or service backup."
+      ],
+      "next_check": "Verify retained artifacts and restore project-specific state through the existing recovery plan."
+    },
+    "observability": {
+      "acceptance_criteria": [
+        "Failed, timed-out and missing commands remain visible in machine-readable receipts."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Alert delivery and continuous operational telemetry are not exercised."
+      ],
+      "next_check": "Verify a failed hosted run reaches the designated operator."
+    },
+    "delivery": {
+      "acceptance_criteria": [
+        "The maintained CLI and workflow failure controls propagate rejection and preserve exact declared inputs."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Passing fixtures do not prove downstream branch protection or rollback."
+      ],
+      "next_check": "Verify the exact published action revision in each required consumer job."
+    },
+    "operations": {
+      "acceptance_criteria": [
+        "An identified operator can recover and rerun intended workflows using verified retained evidence."
+      ],
+      "check_ids": [],
+      "gaps": [
+        "Operational owner acceptance, backup restoration and incident/runbook drills remain external to these tests."
+      ],
+      "next_check": "Establish and exercise project-specific ownership, restore and rollback procedures."
+    },
+    "outcome_evidence": {
+      "acceptance_criteria": [
+        "Positive and deliberately failing synthetic controls distinguish known permitted and denied behavior."
+      ],
+      "check_ids": [
+        "governance-regressions"
+      ],
+      "gaps": [
+        "Synthetic gate fixtures are not measured customer, production or live-agent outcomes."
+      ],
+      "next_check": "Measure intended-use outcomes independently without relabeling fixtures as live evidence."
+    }
+  }
+}
