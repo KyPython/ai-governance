@@ -10,16 +10,22 @@ on:
 
 permissions:
   contents: read
-  checks: write
-  pull-requests: write
 
 jobs:
   level-a:
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     uses: KyLamportLogic/buildlogic-governance/.github/workflows/accessibility.reusable.yml@c9edd8f567bc8c800f4a3bb92b032ffedfc52329 # main
     with:
       governance-ref: c9edd8f567bc8c800f4a3bb92b032ffedfc52329
 
   diff-hygiene:
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     uses: KyLamportLogic/buildlogic-governance/.github/workflows/diff-hygiene.reusable.yml@c9edd8f567bc8c800f4a3bb92b032ffedfc52329 # main
     with:
       governance-ref: c9edd8f567bc8c800f4a3bb92b032ffedfc52329

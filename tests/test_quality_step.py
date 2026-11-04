@@ -1,4 +1,7 @@
-"""Execute the reusable Python quality step against controlled tool outcomes."""
+"""Execute the reusable Python quality step against controlled tool outcomes.
+
+Traceability: ROLLOUT-4.1, ROLLOUT-4.3.
+"""
 
 from pathlib import Path
 import subprocess
