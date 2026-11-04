@@ -118,7 +118,7 @@ jobs:
       run:
         working-directory: ${{ inputs.working-directory }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -140,13 +140,13 @@ jobs:
 
       - name: Setup Node.js
         if: steps.detect.outputs.pm == 'pnpm' || steps.detect.outputs.pm == 'npm' || steps.detect.outputs.pm == 'yarn'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
 
       - name: Setup Python
         if: steps.detect.outputs.pm == 'python'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ inputs.python-version }}
 
@@ -185,10 +185,17 @@ jobs:
             fi
             pip install ruff mypy pytest
             uses_tool() { grep -qs "$1" pyproject.toml setup.cfg requirements*.txt "$2" 2>/dev/null; }
-            if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
-            if uses_tool mypy mypy.ini; then mypy . && summary "type-check: mypy passed"; else summary "type-check: mypy not configured - skipped"; fi
+            if uses_tool ruff ruff.toml; then
+              ruff check .
+              summary "lint: ruff check passed"
+            else summary "lint: ruff not configured - skipped"; fi
+            if uses_tool mypy mypy.ini; then
+              mypy .
+              summary "type-check: mypy passed"
+            else summary "type-check: mypy not configured - skipped"; fi
             if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then
-              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log" && summary "test: pytest passed"
+              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
+              summary "test: pytest passed"
             elif [ "$REQUIRE_TESTS" = "true" ]; then
               echo "::error::No tests found (tests/, test/ or test_*.py). AI-authored changes must ship with tests."
               exit 1
@@ -239,7 +246,7 @@ jobs:
 
       - name: Setup Python for scoped evidence
         if: inputs.system-quality-definition != '' && steps.detect.outputs.pm != 'python'
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: ${{ inputs.python-version }}
 
@@ -251,7 +258,7 @@ jobs:
 
       - name: Retain scoped evidence including failures
         if: always() && inputs.system-quality-definition != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: system-quality-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           path: .quality-results/*.json
@@ -318,7 +325,7 @@ jobs:
       lines_deleted: ${{ steps.policy.outputs.lines_deleted }}
       files_changed: ${{ steps.policy.outputs.files_changed }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -876,7 +883,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -977,7 +984,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -1099,7 +1106,7 @@ jobs:
 
       - name: Upload scorecard artifact
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ai-governance-summary
           path: ai-governance-summary.json
