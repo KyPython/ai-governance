@@ -12,6 +12,19 @@ permissions:
   contents: read
 
 jobs:
+  python-quality-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Exercise Python quality failure propagation
+        run: python -B -m unittest discover -s tests -p 'test_quality_step.py' -v
+
   ai-governance:
     uses: ./.github/workflows/governance.yml
     with:
