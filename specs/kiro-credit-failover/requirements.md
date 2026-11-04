@@ -23,7 +23,7 @@ Keep the existing process: human-selected goal → requirements → design → t
 - PR #220 is draft and changes one runbook. Five observed checks passed at its pinned head; no human review or merge was recorded.
 - The existing offline kit is extracted unchanged in Downloads, with four supplied tests passed. Its verifier checks structure only.
 - Local Codex reports ChatGPT authentication. A new CLI inference task was not run; authentication is not proof of remaining capacity. Claude and Cursor report unauthenticated.
-- Codex Cloud listing worked, but no task was launched. The actual deployed relay source has now been recovered by authenticated GET and confirms Kiro-only routing, combined spec/build instructions and no fallback or replay state. Decoded source SHA256 is `c923021ea0617698c874d8acb1061f8f221337c3f8e4c0e4349fcc1c83c58707`; original Git history remains unavailable. The separate AWS controller remains blocked on admission/isolation. No automatic fallback is deployed.
+- Codex Cloud listing worked, but no task was launched. The actual deployed relay source has now been recovered by authenticated GET and confirms Kiro-only routing, combined spec/build instructions and no fallback or replay state. The decoded source content hash stays in the private record and is not published here; original Git history remains unavailable. The separate AWS controller remains blocked on admission/isolation. No automatic fallback is deployed.
 
 ## Candidate requirements
 
