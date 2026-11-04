@@ -21,7 +21,7 @@ GOV_SECTION_PATH="AGENTS.governance.md"
 GOV_TEMPLATE_PATH="templates/ai-governance.yml"
 RULESET_NAME="governance-mandatory"
 CHECK="ai-governance / verdict"
-TEMPLATE_REPO="KyPython/template"
+TEMPLATE_REPO="KyPython/repo-starter"
 SHARED_ROOT="${KY_NEW_REPO_SHARED_ROOT:-/Users/ky}"
 
 OWNER="KyLamportLogic"
