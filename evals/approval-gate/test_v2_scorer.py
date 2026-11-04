@@ -1,3 +1,4 @@
+# Traceability: SECFC-2.1, SECFC-2.2, SECFC-2.3
 """Unit tests for validate_send() — v2.1.
 
 Covers every branch, including the v2.1 additions (approver, issued_at,
