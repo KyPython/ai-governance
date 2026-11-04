@@ -1,3 +1,4 @@
+# Traceability: SECFC-2.1, SECFC-2.2, SECFC-2.3
 """Unit tests for v2 validate_send() — including the expiry branch,
 which has no dedicated dataset case yet.
 

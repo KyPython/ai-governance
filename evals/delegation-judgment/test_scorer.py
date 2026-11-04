@@ -1,3 +1,4 @@
+# Traceability: SECFC-4.1
 """Decision extraction and TaskState-facing delegation scorer regressions."""
 
 import asyncio
