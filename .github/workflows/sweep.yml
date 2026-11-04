@@ -1,0 +1,41 @@
+name: Governance sweep
+
+# Opens governance opt-in PRs on any owned repo missing the gate, and protects
+# repos whose verdict has passed. This is how new repos get governed within
+# 24 hours of creation. Never merges, deletes, or changes visibility.
+#
+# Setup: store a classic PAT with repo + workflow scopes (admin on the target
+# repos) as the SWEEP_TOKEN repository secret. Every PR is authored as the
+# token owner. Ky merges.
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Sweep all repos
+        env:
+          GITHUB_TOKEN: ${{ secrets.SWEEP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "::error::SWEEP_TOKEN secret is missing. Create a classic PAT (repo, workflow scopes, admin on the target repos) and store it as the SWEEP_TOKEN repository secret."
+            exit 1
+          fi
+          export SWEEP_SKIP="$RUNNER_TEMP/sweep.skip"
+          printf '# Generated: no manual exclusions. Forks/archived/empty auto-skip.\n' > "$SWEEP_SKIP"
+          ./scripts/sweep.sh --apply

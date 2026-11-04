@@ -182,10 +182,17 @@ jobs:
             fi
             pip install ruff mypy pytest
             uses_tool() { grep -qs "$1" pyproject.toml setup.cfg requirements*.txt "$2" 2>/dev/null; }
-            if uses_tool ruff ruff.toml; then ruff check . && summary "lint: ruff check passed"; else summary "lint: ruff not configured - skipped"; fi
-            if uses_tool mypy mypy.ini; then mypy . && summary "type-check: mypy passed"; else summary "type-check: mypy not configured - skipped"; fi
+            if uses_tool ruff ruff.toml; then
+              ruff check .
+              summary "lint: ruff check passed"
+            else summary "lint: ruff not configured - skipped"; fi
+            if uses_tool mypy mypy.ini; then
+              mypy .
+              summary "type-check: mypy passed"
+            else summary "type-check: mypy not configured - skipped"; fi
             if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then
-              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log" && summary "test: pytest passed"
+              pytest 2>&1 | tee -a "$RUNNER_TEMP/test-output.log"
+              summary "test: pytest passed"
             elif [ "$REQUIRE_TESTS" = "true" ]; then
               echo "::error::No tests found (tests/, test/ or test_*.py). AI-authored changes must ship with tests."
               exit 1
