@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# ky-new-repo: create a new repository with the governance bundle + protection from day one.
+#
+#   ky-new-repo [--org NAME | --user NAME] [--private | --public]
+#               [--template] [--dry-run] <name> [--description "..."] [--ci node|python|none]
+#
+# Steps: validate name; refuse inside the shared checkout; gh repo create; fresh clone
+# into /tmp/ky-new-repo-<name>/; resolve the pinned governance SHA live; install the
+# caller + AGENTS.md section + CODEOWNERS + PR template (+ minimal ci.yml per --ci);
+# initial commit; push; protect (org repos inherit the org ruleset, verified; user repos
+# get optin.sh --protect once the verdict is green); print the per-repo checklist.
+#
+# Defaults: owner KyLamportLogic (org), private. These defaults need Ky's standing
+# decision (rollout design gap 7); until then they are provisional.
+# Never merges, force-pushes, bypasses, deletes, or changes visibility.
+# --dry-run prints every command without executing anything (fully offline).
+set -euo pipefail
+
+GOV_REPO="KyPython/ai-governance"
+GOV_SECTION_PATH="AGENTS.governance.md"
+GOV_TEMPLATE_PATH="templates/ai-governance.yml"
+RULESET_NAME="governance-mandatory"
+CHECK="ai-governance / verdict"
+TEMPLATE_REPO="KyPython/template"
+SHARED_ROOT="/Users/ky"
+
+OWNER="KyLamportLogic"
+OWNER_KIND="org"
+VISIBILITY="private"
+USE_TEMPLATE=0
+DRY_RUN=0
+CI_KIND="node"
+NAME=""
+DESCRIPTION=""
+
+usage() { sed -n '2,22p' "$0"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --org) OWNER="${2:?--org needs a value}"; OWNER_KIND="org"; shift 2 ;;
+    --user) OWNER="${2:?--user needs a value}"; OWNER_KIND="user"; shift 2 ;;
+    --private) VISIBILITY="private"; shift ;;
+    --public) VISIBILITY="public"; shift ;;
+    --template) USE_TEMPLATE=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --ci) CI_KIND="${2:?--ci needs node|python|none}"; shift 2 ;;
+    --description) DESCRIPTION="${2:?--description needs a value}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    --*) echo "Unknown flag: $1" >&2; usage; exit 2 ;;
+    *) [ -z "$NAME" ] || { echo "Only one <name> allowed" >&2; exit 2; }; NAME="$1"; shift ;;
+  esac
+done
+
+[ -n "$NAME" ] || { usage; exit 2; }
+case "$CI_KIND" in node|python|none) ;; *) echo "--ci must be node|python|none" >&2; exit 2 ;; esac
+[[ "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ ]] || { echo "Invalid repo name: $NAME" >&2; exit 2; }
+
+case "$PWD" in
+  "$SHARED_ROOT"|"$SHARED_ROOT"/*)
+    echo "Refusing to run inside the shared checkout ($PWD). Run from a scratch parent (e.g. /tmp)." >&2
+    exit 2 ;;
+esac
+
+WORKDIR="/tmp/ky-new-repo-$NAME"
+REPO="$OWNER/$NAME"
+TIMEOUT_SECS="${KY_NEW_REPO_TIMEOUT:-600}"
+POLL_SECS=20
+
+say() { printf '%s\n' "$*"; }
+run() { say "+ $*"; "$@" 2>&1 | tail -n 3; }
+plan() { say "DRY-RUN: $*"; }
+
+if [ "$DRY_RUN" = 1 ]; then
+  TPL=""; [ "$USE_TEMPLATE" = 1 ] && TPL=" --template $TEMPLATE_REPO"
+  plan "gh repo create $REPO --$VISIBILITY --disable-wiki --disable-projects${DESCRIPTION:+ --description \"$DESCRIPTION\"}$TPL"
+  plan "gh repo clone $REPO $WORKDIR"
+  plan "GOV_SHA=\$(gh api repos/$GOV_REPO/commits/main --jq .sha)"
+  plan "fetch $GOV_SECTION_PATH + $GOV_TEMPLATE_PATH at \$GOV_SHA via gh api (raw)"
+  plan "install bundle: .github/workflows/ai-governance.yml (pinned), AGENTS.md section, .github/CODEOWNERS, .github/pull_request_template.md"
+  [ "$CI_KIND" = none ] || plan "install minimal ci.yml (--ci $CI_KIND)"
+  plan "git add -A && git -c commit.gpgsign=false commit -m \"chore(repo): bootstrap $NAME with governance bundle\" && git push -u origin <default-branch>"
+  if [ "$OWNER_KIND" = org ]; then
+    plan "verify org ruleset: gh api /orgs/$OWNER/rulesets --jq (expect $RULESET_NAME active)"
+    plan "probe PR (empty commit on governance/probe) showing '$CHECK' as expected; leave open for Ky"
+  else
+    plan "no-op PR to run '$CHECK', then optin.sh --protect $REPO once green (poll up to ${TIMEOUT_SECS}s)"
+  fi
+  plan "verify: gh api repos/$REPO/branches/<default>/protection; print per-repo checklist"
+  say "DRY-RUN complete: nothing executed."
+  exit 0
+fi
+
+command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 2; }
+gh auth status >/dev/null 2>&1 || { echo "gh not authenticated" >&2; exit 2; }
+[ -e "$WORKDIR" ] && { echo "Workdir exists: $WORKDIR (remove it or pick another name)" >&2; exit 2; }
+
+# ---- 1. create ----
+CREATE_ARGS=(repo create "$REPO" "--$VISIBILITY" --disable-wiki --disable-projects)
+[ -n "$DESCRIPTION" ] && CREATE_ARGS+=(--description "$DESCRIPTION")
+[ "$USE_TEMPLATE" = 1 ] && CREATE_ARGS+=(--template "$TEMPLATE_REPO")
+run gh "${CREATE_ARGS[@]}"
+
+# ---- 2. clone + pin SHA live ----
+run gh repo clone "$REPO" "$WORKDIR"
+cd "$WORKDIR"
+GOV_SHA="$(gh api "repos/$GOV_REPO/commits/main" --jq .sha)"
+[ -n "$GOV_SHA" ] || { echo "Could not resolve governance SHA" >&2; exit 1; }
+say "Pinned $GOV_REPO@$GOV_SHA"
+SECTION="$(gh api "repos/$GOV_REPO/contents/$GOV_SECTION_PATH?ref=$GOV_SHA" --jq .content | base64 -d)"
+TEMPLATE="$(gh api "repos/$GOV_REPO/contents/$GOV_TEMPLATE_PATH?ref=$GOV_SHA" --jq .content | base64 -d)"
+
+# ---- 3. install bundle ----
+LOGIN="$(gh api user --jq .login)"
+git config user.name "$LOGIN"
+git config user.email "$LOGIN@users.noreply.github.com"
+mkdir -p .github/workflows
+printf '%s\n' "${TEMPLATE//__AI_GOVERNANCE_SHA__/$GOV_SHA}" > .github/workflows/ai-governance.yml
+{ printf '# Agent rules\n\n'; printf '%s\n' "$SECTION"; } > AGENTS.md
+printf '# Every path requires human (Ky) review.\n* @%s\n' "$LOGIN" > .github/CODEOWNERS
+cat > .github/pull_request_template.md <<'PRT'
+## What / Why
+
+<!-- What changed and why it works -->
+
+## Failure modes
+
+<!-- How this could fail, and what you did to rule that out -->
+
+## Testing
+
+<!-- How it was tested: commands run plus results -->
+
+- [ ] Ran the repo's install / lint / type-check / test / build commands locally (whichever exist)
+- [ ] All existing tests pass
+
+## Issues
+
+Closes #
+Relates to #
+
+## Checklist
+
+- [ ] Title follows Conventional Commits: `<type>(<scope>): <description>` (`feat|fix|docs|test|refactor|style|chore|ci|perf|build|revert`)
+- [ ] Branch is off the default branch; I did not merge, approve, or enable auto-merge (Ky merges)
+- [ ] No secrets, tokens, or `.env` values committed
+- [ ] No edits to governance itself (caller workflow/SHA, CODEOWNERS, AGENTS.md governance section, branch protection) unless Ky explicitly requested them
+PRT
+if [ "$CI_KIND" = node ]; then
+  cat > .github/workflows/ci.yml <<'CINODE'
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - run: |
+          if [ ! -f package.json ]; then echo "no package.json yet (bootstrap smoke ok)"; exit 0; fi
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+          npm test --if-present
+CINODE
+elif [ "$CI_KIND" = python ]; then
+  cat > .github/workflows/ci.yml <<'CIPY'
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: |
+          python -m pip install -U pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -d tests ]; then pip install pytest && pytest; else echo "no tests yet (bootstrap smoke ok)"; fi
+CIPY
+fi
+
+# ---- 4. initial commit + push (never force-push) ----
+git add -A
+git -c commit.gpgsign=false commit -m "chore(repo): bootstrap $NAME with governance bundle"
+if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+  BRANCH="$(git branch --show-current)"
+  git push -u origin "$BRANCH"
+else
+  git branch -M main
+  git push -u origin main
+fi
+DEFAULT_BRANCH="$(gh api "repos/$REPO" --jq .default_branch)"
+
+poll_verdict() { # $1 = sha -> 0 when verdict success, 1 on timeout/failure
+  local sha="$1" waited=0 conclusion=""
+  while [ "$waited" -lt "$TIMEOUT_SECS" ]; do
+    conclusion="$(gh api "repos/$REPO/commits/$sha/check-runs?per_page=100&filter=latest" \
+      --jq "[.check_runs[] | select(.name==\"$CHECK\")][0].conclusion // \"pending\"")"
+    case "$conclusion" in
+      success) return 0 ;;
+      failure|cancelled|timed_out|action_required|stale|skipped)
+        say "verdict concluded: $conclusion"; return 1 ;;
+    esac
+    sleep "$POLL_SECS"; waited=$((waited + POLL_SECS))
+  done
+  say "verdict did not pass within ${TIMEOUT_SECS}s (last: $conclusion)"
+  return 1
+}
+
+# ---- 5. protect ----
+if [ "$OWNER_KIND" = org ]; then
+  say "Org repo: verifying inherited ruleset $RULESET_NAME..."
+  gh api "/orgs/$OWNER/rulesets" --jq ".[] | select(.name==\"$RULESET_NAME\") | {name, enforcement}" \
+    | grep -q '"enforcement": "active"' \
+    || { say "unresolved: org ruleset $RULESET_NAME not active on $OWNER"; exit 4; }
+  git checkout -b governance/probe
+  git -c commit.gpgsign=false commit -q --allow-empty -m "chore(repo): probe governance check"
+  git push -u origin governance/probe
+  PROBE_SHA="$(git rev-parse HEAD)"
+  PROBE_URL="$(gh pr create --title "chore(repo): probe governance check" --base "$DEFAULT_BRANCH" \
+    --head governance/probe --body "Probe PR: confirms '$CHECK' runs on first PR. Ky closes." --jq .url)"
+  say "Probe PR: $PROBE_URL"
+  poll_verdict "$PROBE_SHA" \
+    || { say "unresolved: verdict never passed on probe PR $PROBE_URL"; exit 3; }
+else
+  say "User repo: no-op PR + optin.sh --protect once green..."
+  git checkout -b governance/probe
+  git -c commit.gpgsign=false commit -q --allow-empty -m "chore(repo): run initial governance verdict"
+  git push -u origin governance/probe
+  PROBE_SHA="$(git rev-parse HEAD)"
+  PROBE_URL="$(gh pr create --title "chore(repo): run initial governance verdict" --base "$DEFAULT_BRANCH" \
+    --head governance/probe --body "Runs '$CHECK' so the default branch can be protected. Ky merges/closes." --jq .url)"
+  say "Probe PR: $PROBE_URL"
+  poll_verdict "$PROBE_SHA" \
+    || { say "unresolved: verdict never passed on $PROBE_URL; not protected"; exit 3; }
+  PROTECT="${KY_NEW_REPO_PROTECT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/optin.sh --protect}"
+  # shellcheck disable=SC2086
+  run $PROTECT "$REPO" || exit 4
+fi
+
+# ---- 6. verify + checklist ----
+say "--- verification ---"
+if [ "$OWNER_KIND" = org ]; then
+  gh api "/orgs/$OWNER/rulesets" --jq ".[] | select(.name==\"$RULESET_NAME\") | {name, enforcement}"
+else
+  gh api "repos/$REPO/branches/$DEFAULT_BRANCH/protection" \
+    --jq '{checks: .required_status_checks.checks, admins: .enforce_admins.enabled}'
+fi
+cat <<EOF
+per-repo checklist for $REPO:
+[x] caller .github/workflows/ai-governance.yml pinned to full SHA ($GOV_SHA)
+[x] AGENTS.md contains AI-GOVERNANCE:v1; .github/CODEOWNERS has global owner
+[x] '$CHECK' success on $PROBE_SHA
+[x] protection verified above (Ky merges the probe PR; this CLI never merges)
+EOF
