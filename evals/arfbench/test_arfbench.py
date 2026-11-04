@@ -1,3 +1,4 @@
+# Traceability: ARF-1.1, ARF-1.2
 """Regression tests for the ARFBench inspect_ai task.
 
 Guards the packaging and anti-reward-hacking invariants:
