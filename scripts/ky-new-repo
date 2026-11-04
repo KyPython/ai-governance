@@ -76,7 +76,7 @@ if [ "$DRY_RUN" = 1 ]; then
   plan "gh repo clone $REPO $WORKDIR"
   plan "GOV_SHA=\$(gh api repos/$GOV_REPO/commits/main --jq .sha)"
   plan "fetch $GOV_SECTION_PATH + $GOV_TEMPLATE_PATH at \$GOV_SHA via gh api (raw)"
-  plan "install bundle: .github/workflows/ai-governance.yml (pinned), AGENTS.md section, .github/CODEOWNERS, .github/pull_request_template.md"
+  plan "install bundle: .github/workflows/ai-governance.yml (pinned), AGENTS.md section, .github/CODEOWNERS, .github/pull_request_template.md, .github/dependabot.yml"
   [ "$CI_KIND" = none ] || plan "install minimal ci.yml (--ci $CI_KIND)"
   plan "git add -A && git -c commit.gpgsign=false commit -m \"chore(repo): bootstrap $NAME with governance bundle\" && git push -u origin <default-branch>"
   if [ "$OWNER_KIND" = org ]; then
@@ -198,6 +198,16 @@ jobs:
           if [ -d tests ]; then pip install pytest && pytest; else echo "no tests yet (bootstrap smoke ok)"; fi
 CIPY
 fi
+case "$CI_KIND" in
+  node) DEP_ECO="npm" ;;
+  python) DEP_ECO="pip" ;;
+  *) DEP_ECO="" ;;
+esac
+{
+  printf 'version: 2\nupdates:\n'
+  printf '  - package-ecosystem: "github-actions"\n    directory: "/"\n    schedule: {interval: "weekly"}\n'
+  [ -n "$DEP_ECO" ] && printf '  - package-ecosystem: "%s"\n    directory: "/"\n    schedule: {interval: "weekly"}\n' "$DEP_ECO"
+} > .github/dependabot.yml
 
 # ---- 4. initial commit + push (never force-push) ----
 git add -A

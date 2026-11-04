@@ -91,6 +91,18 @@ class KyNewRepoTests(unittest.TestCase):
         self.assertEqual(user.returncode, 0, user.stderr)
         self.assertIn("optin.sh --protect", user.stdout)
 
+    def test_dry_run_bundle_includes_dependabot(self):
+        # KYNEW-2.3: every bootstrapped repo gets dependency automation.
+        result = run_script(["--dry-run", "demo"], self.scratch)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".github/dependabot.yml", result.stdout)
+
+    def test_dry_run_template_points_at_repo_starter(self):
+        # KYNEW-2.4: --template must reference the real starter template.
+        result = run_script(["--dry-run", "--template", "demo"], self.scratch)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--template KyPython/repo-starter", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
