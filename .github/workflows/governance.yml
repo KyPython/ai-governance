@@ -402,7 +402,11 @@ jobs:
               else:
                   import urllib.request
                   roles_src = os.environ.get("ROLES_URL", "")
-                  with urllib.request.urlopen(roles_src, timeout=20) as r:
+                  req = urllib.request.Request(roles_src, headers={"User-Agent": "ai-governance-policy"})
+                  token = os.environ.get("GITHUB_TOKEN", "")
+                  if token:
+                      req.add_header("Authorization", f"Bearer {token}")
+                  with urllib.request.urlopen(req, timeout=20) as r:
                       roles_text = r.read().decode("utf-8")
               roles = parse_roles(roles_text)
               role_defs = roles.get("roles")
