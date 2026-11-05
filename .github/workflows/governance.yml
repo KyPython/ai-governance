@@ -91,6 +91,14 @@ on:
         type: string
         default: "advisory"
 
+    secrets:
+      governance-token:
+        description: >
+          Optional token with read access to KyPython/ai-governance, used only to load
+          roles.yml from its main branch. Cross-repository callers must pass this (for
+          example a GitHub App installation token); same-repository callers may omit it
+          and the workflow token is used. The gate still fails closed when neither works.
+        required: false
     outputs:
       verdict:
         description: "pass or fail"
@@ -580,6 +588,7 @@ jobs:
           # step asks for that login; unit tests leave this unset and use declared git fields.
           RESOLVE_GITHUB_LOGINS: "true"
           GITHUB_TOKEN: ${{ github.token }}
+          ROLES_TOKEN: ${{ secrets.governance-token }}
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -630,7 +639,7 @@ jobs:
                   import urllib.request
                   roles_src = os.environ.get("ROLES_URL", "")
                   req = urllib.request.Request(roles_src, headers={"User-Agent": "ai-governance-policy"})
-                  token = os.environ.get("GITHUB_TOKEN", "")
+                  token = os.environ.get("ROLES_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
                   if token:
                       req.add_header("Authorization", f"Bearer {token}")
                   with urllib.request.urlopen(req, timeout=20) as r:
@@ -1359,7 +1368,6 @@ jobs:
           COMPLETION_VERDICT: ${{ needs.quality.outputs.completion_verdict }}
           POLICY_SPEC: ${{ needs.policy.outputs.spec }}
         run: |
-<<<<<<< HEAD
           echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS}"
           # CGW-3.4: under required, a PR that names a spec passes only on a VERIFIED completion verdict.
           completion_ok=true
@@ -1374,7 +1382,6 @@ jobs:
           echo "### completion: mode=${COMPLETION_MODE:-advisory} status=${COMPLETION_STATUS:-none} verdict=${COMPLETION_VERDICT:-none}" >> "$GITHUB_STEP_SUMMARY"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
           if { [ "$QUALITY" = "success" ] || { [ "$QUALITY" = "skipped" ] && [ "$RUN_QUALITY" = "false" ] && [ -z "$SYSTEM_QUALITY_DEFINITION" ]; }; } && [ "$POLICY" = "success" ] && [ "$SECURITY" = "success" ] && [ "$SECRETS" = "success" ] && [ "$PREREQUISITE_RESULT" = "success" ] && [ "$completion_ok" = true ]; then
-=======
           echo "quality=${QUALITY} policy=${POLICY} security=${SECURITY} secret-scan=${SECRETS} run-quality=${RUN_QUALITY} prerequisite=${PREREQUISITE_RESULT}"
           echo "### verdict: quality=${QUALITY}, policy=${POLICY}, security=${SECURITY}, secret-scan=${SECRETS}" >> "$GITHUB_STEP_SUMMARY"
           quality_ok=false
