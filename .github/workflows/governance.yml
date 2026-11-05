@@ -83,6 +83,14 @@ on:
           exact success from the caller's needs expression passes.
         type: string
         default: ""
+    secrets:
+      governance-token:
+        description: >
+          Optional token with read access to KyPython/ai-governance, used only to load
+          roles.yml from its main branch. Cross-repository callers must pass this (for
+          example a GitHub App installation token); same-repository callers may omit it
+          and the workflow token is used. The gate still fails closed when neither works.
+        required: false
     outputs:
       verdict:
         description: "pass or fail"
@@ -353,6 +361,7 @@ jobs:
           # step asks for that login; unit tests leave this unset and use declared git fields.
           RESOLVE_GITHUB_LOGINS: "true"
           GITHUB_TOKEN: ${{ github.token }}
+          ROLES_TOKEN: ${{ secrets.governance-token }}
         shell: python3 {0}
         run: |
           import json, os, re, subprocess, sys
@@ -403,7 +412,7 @@ jobs:
                   import urllib.request
                   roles_src = os.environ.get("ROLES_URL", "")
                   req = urllib.request.Request(roles_src, headers={"User-Agent": "ai-governance-policy"})
-                  token = os.environ.get("GITHUB_TOKEN", "")
+                  token = os.environ.get("ROLES_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
                   if token:
                       req.add_header("Authorization", f"Bearer {token}")
                   with urllib.request.urlopen(req, timeout=20) as r:
