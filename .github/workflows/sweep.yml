@@ -4,14 +4,23 @@ name: Governance sweep
 # repos whose verdict has passed. This is how new repos get governed within
 # 24 hours of creation. Never merges, deletes, or changes visibility.
 #
-# Setup: store a classic PAT with repo + workflow scopes (admin on the target
-# repos) as the SWEEP_TOKEN repository secret. Every PR is authored as the
-# token owner. Ky merges.
+# Maintained by GPT-6 (ChatGPT), 2026-11-10: safe opt-in policy.
+# This is the EXISTING sweep in ai-governance, not a new automation.
+# Setup: provide SWEEP_TOKEN with scoped rights for the target repos.
+# Default is REPORT ONLY. Owner explicitly enables writes via SWEEP_APPLY=true
+# or a manual workflow_dispatch apply=true, after reviewing the exclusions.
+# Every PR is attributed to the configured token's GitHub identity; only Ky merges.
 
 on:
   schedule:
     - cron: "17 7 * * *"
   workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply the existing sweep after credential and exclusions review (never merge)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -30,12 +39,30 @@ jobs:
       - name: Sweep all repos
         env:
           GITHUB_TOKEN: ${{ secrets.SWEEP_TOKEN }}
+          SWEEP_APPLY: ${{ vars.SWEEP_APPLY }}
+          MANUAL_APPLY: ${{ inputs.apply }}
         run: |
           set -euo pipefail
           if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "::error::SWEEP_TOKEN secret is missing. Create a classic PAT (repo, workflow scopes, admin on the target repos) and store it as the SWEEP_TOKEN repository secret."
+            echo "::error::SWEEP_TOKEN is unavailable. Sweep is BLOCKED; do not bypass the credential gate or claim coverage."
             exit 1
           fi
+          # Existing canonical issue #7 defines explicit exclusions. These
+          # are versioned here, not an empty generated allow-all policy.
+          # Never include external-owned, fork, archived or empty repos:
+          # scripts/sweep.sh already rejects those.
           export SWEEP_SKIP="$RUNNER_TEMP/sweep.skip"
-          printf '# Generated: no manual exclusions. Forks/archived/empty auto-skip.\n' > "$SWEEP_SKIP"
-          ./scripts/sweep.sh --apply
+          cat > "$SWEEP_SKIP" <<'REVIEWED_EXCLUSIONS'
+          # GPT-6, 2026-11-10; source: ai-governance issue #7 and ROLLOUT-1.5.
+          # Existing stronger local rules and active migration paths take priority.
+          KyLamportLogic/LamportLogic local AI mutation gate and pre-existing opt-in PR #397; no parallel write
+          KyLamportLogic/ky-cloud-control-plane local governance and unresolved cross-account private workflow access
+          KyLamportLogic/human-rebuild-bootcamp human-only learner workspace; do not alter assessment material
+          REVIEWED_EXCLUSIONS
+          if [ "${SWEEP_APPLY:-false}" = "true" ] || [ "${MANUAL_APPLY:-false}" = "true" ]; then
+            echo "Explicit sweep apply selected; retaining canonical exclusions."
+            ./scripts/sweep.sh --apply
+          else
+            echo "Governance sweep REPORT ONLY; set SWEEP_APPLY=true after owner review to enable writes."
+            ./scripts/sweep.sh
+          fi
