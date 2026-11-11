@@ -51,7 +51,7 @@ maintainer approval to run.
 
 ## Unknowns
 
-- Repo-wide `yarn verify` (turbo lint, typescript, and test across all packages) has not been run on `961389cf`.
+- Repo-wide `yarn verify` was not run by the author. An independent review run on 2026-11-10 exited 0 (70 of 70 tasks, 0 cached).
 - Playwright e2e has not been run.
 - Whether maintainers object to the `useDeleteVisit.tsx` import reformat is unknown.
 - Whether upstream `main` moves again before a push is unknown; the review task rechecks it.

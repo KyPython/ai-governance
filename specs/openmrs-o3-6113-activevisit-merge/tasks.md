@@ -24,16 +24,16 @@ Rollback before task 8: do not push; to discard the candidate, reset the local b
 |---|---|---|
 | OAV-1.1 | Task 2 read; resources tests "launches the latest visit context after a previous launch resolves", "records the visit the workspace group was relaunched with" | Pass (vitest) |
 | OAV-1.2 | Task 2 read; resources-test `groupPropsFor` assertions use `activeVisit` | Pass (vitest) |
-| OAV-1.3 | Task 2 grep; `tsc --noEmit -p .` | `tsc` exit 0; grep not yet recorded by a reviewer |
-| OAV-2.1 | Task 2 read of the returned state | Not covered by a test; reviewer read required |
+| OAV-1.3 | Task 2 grep; `tsc --noEmit -p .` | `tsc` exit 0; independent review grep: 0 hits for `isValidatingVisitContext` and `setVisitContext`, no store field `visitContext` |
+| OAV-2.1 | Task 2 read of the returned state | Not covered by a test; independent review read lines 242-244: satisfied |
 | OAV-3.1 | "preserves the patient-load error for an unavailable patient"; "does not launch or store a retained patient when the patient request has errored" | Pass |
 | OAV-3.2 | "preserves missing patient data when loading completes without an error" | Pass |
 | OAV-3.3 | "clears a cached patient and suppresses visit launches until the patient request recovers"; component "removes the chart when a cached patient becomes unavailable" | Pass |
 | OAV-3.4 | "does not launch a queued visit or publish its context after a pending launch resolves while unavailable" | Pass |
 | OAV-3.5 | "does not launch the active-visit group until the store patient identity is restored on recovery"; "reconciles the recovered visit after an invalidated launch may have changed the framework group" | Pass |
-| OAV-4.1 | Whole-app vitest; task 4 `yarn verify` | App: 268 passed, 1 skipped (also skipped on `main`). `yarn verify`: not run |
-| OAV-5.1 | Task 3 | Pass (vitest); 9 renamed lines across two files |
+| OAV-4.1 | Whole-app vitest; task 4 `yarn verify` | App: 268 passed, 1 skipped (also skipped on `main`). `yarn verify` (independent review): exit 0, 70 of 70 tasks, 0 cached |
+| OAV-5.1 | Task 3 | Pass (vitest); 30 changed test lines (27 in the resources test, 3 in the component test), all the `visitContext` to `activeVisit` rename |
 | OAV-5.2 | Task 3 counts | `expect(` count in resources test: 63 before and after; no skips added |
 | OAV-6.1 | Task 5 | 6 files, +629/-18 |
-| OAV-6.2 | Task 6 | Pending |
+| OAV-6.2 | Task 6 | Independent review recorded 2026-11-10, local results only |
 | OAV-6.3 | Tasks 7 to 9 | Not pushed; no comment posted |
