@@ -30,8 +30,11 @@ with `Accept: application/vnd.github.raw+json` and `Authorization: Bearer <token
 | Where the gate runs | `github.token` reads ai-governance? | Needs `AI_GOVERNANCE_READ_TOKEN`? |
 |---|---|---|
 | KyPython/ai-governance (self-test, #263, #264) | Expected yes: same repository, `contents: read`. INFERENCE until GRM-1.4 is shown in CI. | No |
-| Other KyPython repositories | No: the token is scoped to the calling repository. | Yes |
-| KyLamportLogic repositories | Not reached: `access_level: user` stops them calling the private workflow; they are also under an Actions billing lock. | Out of scope |
+| Private KyPython callers (4: odin-tasks, claim-checker, odin-recording-preparation, skills-hello-github-actions) | No: the token is scoped to the calling repository. | Yes |
+| Public callers (9: KyPython/KyPython, repair-bench, repo-starter, openmrs-esm-patient-chart, openmrs-esm-chartsearchai, openmrs-ddi-knowledge-base, visit-taniti, deepeval; KyLamportLogic/buildlogic-governance) | Not reached. GitHub does not let a public repository call a reusable workflow stored in a private repository. Observed: KyPython/repair-bench#10's `AI Governance` run on `e1a9b61` (2026-11-11) failed with 0 jobs, "This run likely failed because of a workflow file issue". | Not fixable by this spec |
+| Private KyLamportLogic callers (2: adaption-authz-simulator, ky-cloud-control-plane) | Not reached: `access_level: user` limits callers to KyPython-owned repositories. Observed: buildlogic-governance#27's `AI Governance` rerun ended in `startup_failure` with 0 jobs. | Not fixable by this spec |
+
+Caller counts come from checking `.github/workflows/ai-governance.yml` in every non-archived KyPython and KyLamportLogic repository on 2026-11-11. This spec restores the gate for ai-governance and the 4 private KyPython callers only. The other 11 need the repository-level decision in HOLD 3.
 
 ## Unknowns
 
@@ -42,4 +45,4 @@ with `Accept: application/vnd.github.raw+json` and `Authorization: Bearer <token
 
 - HOLD 1: Ky merges this spec-only PR.
 - HOLD 2: Ky creates a token with read-only Contents access to `KyPython/ai-governance` and stores it as the `AI_GOVERNANCE_READ_TOKEN` secret in each calling KyPython repository. Agents do not create tokens or change repository settings.
-- HOLD 3: Ky decides separately how KyLamportLogic repositories get the gate (Actions access level, transfer, or another route).
+- HOLD 3: Ky decides how the 9 public callers and the 2 KyLamportLogic callers get the gate. GitHub's documented options are a public repository for the reusable workflow, or vendoring the workflow into each caller; either changes where the gate's source lives.
