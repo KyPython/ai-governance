@@ -92,5 +92,5 @@ what was actually run, so that I decide publication with accurate facts.
 #### Acceptance Criteria
 
 1. OAV-6.1 The diff from upstream `main` SHALL contain only the PR's O3-6113 files plus formatting that the repository's own pre-commit hook enforces. Ky decided on 2026-11-10 to keep the hook's Prettier reformat of one import in `useDeleteVisit.tsx`.
-2. OAV-6.2 Evidence for this delta SHALL label local checks as local and SHALL NOT describe them as maintainer CI or independent review.
+2. OAV-6.2 Evidence for this delta SHALL label every check as local, and SHALL NOT describe an author-run check as maintainer CI or as independent review.
 3. OAV-6.3 The merge SHALL NOT be pushed to the fork branch, and no comment SHALL be posted on PR #3798, until Ky has validated this spec and authorized that exact action.
