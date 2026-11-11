@@ -62,7 +62,7 @@ chart, so that I cannot record data against an unavailable patient.
 1. OAV-3.1 IF the patient request returns an error THEN the returned state SHALL carry that error and SHALL NOT substitute `{}` for the patient.
 2. OAV-3.2 IF loading settles with no patient and no error THEN the returned `patient` SHALL remain `null` or `undefined`.
 3. OAV-3.3 WHILE the patient is unavailable, or the store's `patientUuid` differs from the patient's id, the hook SHALL NOT launch a workspace group and SHALL clear its latest group props.
-4. OAV-3.4 IF a pending workspace-group launch resolves after the patient became unavailable THEN the hook SHALL NOT launch a queued visit and SHALL NOT publish that visit's uuid.
+4. OAV-3.4 IF a pending workspace-group launch resolves while the patient is still unavailable THEN the hook SHALL NOT launch a queued visit and SHALL NOT publish that visit's uuid. When the patient has recovered before the launch resolves, OAV-3.5 applies instead.
 5. OAV-3.5 WHEN the patient becomes available again THEN the hook SHALL launch the group only after the store's patient identity is restored, and SHALL reconcile the framework group after an invalidated in-flight launch.
 
 ### Requirement 4: Healthy-patient behavior (OAV-4)

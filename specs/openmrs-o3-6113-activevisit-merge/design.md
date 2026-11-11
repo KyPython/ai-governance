@@ -34,7 +34,8 @@ Spec ID: OAV · Issue: #217
 The merge does not change the PR's state machine; it renames the identifiers the state machine
 reads. The hook's states stay: loading, available, unavailable (error, or settled with no
 patient), and recovering. Transitions into unavailable clear the latest group props and block
-launches. A launch already in flight cannot publish a visit uuid after invalidation. Recovery
+launches. A launch that resolves while the patient is still unavailable cannot launch a queued
+visit or publish a visit uuid. If the patient recovers before that launch resolves, recovery
 waits for the store's `patientUuid` to match the patient before launching, then reconciles the
 framework group.
 
