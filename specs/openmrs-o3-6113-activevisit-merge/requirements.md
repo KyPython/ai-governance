@@ -30,6 +30,11 @@ Ordering note: a candidate merge already exists as local, unpushed commit `96138
 spec existed. This spec is the review basis for that commit; the commit is not evidence that
 the spec is satisfied until the review task in `tasks.md` records it.
 
+Re-pin, 2026-11-11: upstream `main` moved to `326be2f9` (openmrs-bot, "(chore) Update OpenMRS
+dependencies (#3870)"). As task 1 requires, Kiro redid the merge: local, unpushed commit
+`6a3a033f` merges `961389cf` with `326be2f9`, with no conflicts; that upstream commit changes only
+`yarn.lock` and none of this PR's files. `6a3a033f` is now the candidate and `326be2f9` the base.
+
 ## Requirements
 
 ### Requirement 1: Upstream store and group contracts (OAV-1)

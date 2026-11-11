@@ -4,6 +4,10 @@ Spec ID: OAV · Issue: #217
 
 ## Sources and pins
 
+Current pins (re-pinned 2026-11-11): base `326be2f9`, candidate `6a3a033f`, PR head `bf7dccd7`. The
+lines below record the original 2026-11-10 pins and evidence for `961389cf`; that evidence must be
+rerun for `6a3a033f` before HOLD 2.
+
 - Upstream repository: `openmrs/openmrs-esm-patient-chart`, `main` at `0039b3f1` (checked with `git ls-remote` on 2026-11-10).
 - PR head: `bf7dccd7` on `KyPython/openmrs-esm-patient-chart` `fix/O3-6113-unavailable-patient`.
 - Breaking upstream change: `c329ff88`, O3-6032 / PR #3781, 2026-11-06.
