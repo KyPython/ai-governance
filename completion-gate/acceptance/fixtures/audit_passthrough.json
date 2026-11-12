@@ -1,0 +1,12 @@
+{
+  "deny_events": [{"timestamp": "2026-11-10T22:50:00Z", "rule": "ACC-DENY-MARKER-1", "target": "sandbox"}],
+  "credential_grants_used": ["ACC-GRANT-MARKER-1"],
+  "external_sends": [{"timestamp": "2026-11-10T22:51:00Z", "destination": "127.0.0.1", "marker": "ACC-SEND-MARKER-1"}],
+  "checkpoints": [{"timestamp": "2026-11-10T22:52:00Z", "marker": "ACC-CHECKPOINT-1"}],
+  "reasoning_audit": {
+    "reasoning_transparency": "AVAILABLE",
+    "segments": [{"text": "ACC-REASONING-MARKER-1"}],
+    "self_override_suspected": true
+  },
+  "configuration": {"model": "acc-model", "reasoning_effort": "high", "harness": "acc-harness"}
+}
