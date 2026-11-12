@@ -223,6 +223,41 @@ To do it by hand: copy `templates/ai-governance.yml` to `.github/workflows/ai-go
 
 **Updating the gate:** callers pin a commit SHA, so a change here affects nobody until each repo bumps its SHA in a PR that Ky approves. That stops an agent from weakening the gate for every repo in one edit.
 
+## Governed by default (specs/governed-by-default, GBD)
+
+Every repo Ky owns is meant to be governed the same way without anyone remembering to opt it in. There are
+three layers:
+
+1. **Prevention, org only (GBD-1, GBD-2.1).** In `KyLamportLogic`, the org ruleset `governance-mandatory`
+   requires `ai-governance / verdict` on every repo's default branch, including repos created later. Only org
+   owners can create repos. A new org repo cannot merge anything until it is governed. Ky sets this up (tasks
+   K3 and K4 on #282).
+2. **Creation path (GBD-2.2, GBD-2.3).** `scripts/ky-new-repo` is the only supported way to create a repo. It
+   creates the repo (from the `KyPython/repo-starter` template with `--template`), pins the gate to
+   ai-governance `main` at that moment, and installs the caller workflow, the `AGENTS.md` section and
+   `CODEOWNERS` in the first commit:
+
+   ```bash
+   ./scripts/ky-new-repo --dry-run my-new-repo   # prints the plan, runs nothing
+   ./scripts/ky-new-repo my-new-repo             # KyLamportLogic, private, by default
+   ```
+3. **Detection and repair, everything including the personal account (GBD-3).** The daily "Governance
+   sweep" workflow (`scripts/sweep.sh --apply`):
+   - opens opt-in PRs on ungoverned repos;
+   - keeps one bump PR open while a repo's pin differs from `main`;
+   - allows every `KyPython/ai-governance` path in repos that restrict Actions;
+   - applies the protection model once the verdict passes.
+
+   If it cannot run, it opens or updates a "Governance sweep cannot run" issue here.
+
+**The sweep token (GBD-5.2).** Ky creates it, and it is stored only as the `SWEEP_TOKEN` repository secret.
+Use a classic personal access token with the `repo` and `workflow` scopes. Branch protection also needs admin
+rights on the target repos. Every opt-in and bump PR is authored as the token's user; Ky merges.
+
+**The limit.** GitHub has no account-wide rules and no creation hook for a personal account, so a repo
+created under `KyPython` cannot be blocked at creation. It is picked up by the next daily sweep. Moving
+repos into `KyLamportLogic` is the only way to get prevention for them (decision D1 on #282).
+
 ## Deploys
 
 Gate deploys on governance. Deploy only from `main` (which only advances through governed PRs), or chain off the gate the way LamportLogic's `deploy-all.yml` does:
