@@ -22,20 +22,46 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      issues: write   # only to report a failed sweep in this repo (GBD-3.1)
+    env:
+      SWEEP_TOKEN_SET: ${{ secrets.SWEEP_TOKEN != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+
+      - name: Require the sweep token
+        if: env.SWEEP_TOKEN_SET != 'true'
+        run: |
+          echo "SWEEP_TOKEN is missing" > "$RUNNER_TEMP/sweep-failure"
+          echo "::error::SWEEP_TOKEN secret is missing. Create a classic PAT (repo, workflow scopes, admin on the target repos) and store it as the SWEEP_TOKEN repository secret."
+          exit 1
 
       - name: Sweep all repos
         env:
           GITHUB_TOKEN: ${{ secrets.SWEEP_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "::error::SWEEP_TOKEN secret is missing. Create a classic PAT (repo, workflow scopes, admin on the target repos) and store it as the SWEEP_TOKEN repository secret."
-            exit 1
-          fi
           export SWEEP_SKIP="$RUNNER_TEMP/sweep.skip"
           printf '# Generated: no manual exclusions. Forks/archived/empty auto-skip.\n' > "$SWEEP_SKIP"
           ./scripts/sweep.sh --apply
+
+      # GBD-3.1: a sweep that cannot run is reported, not silent. Uses this workflow's own token, scoped to issues.
+      - name: Report a failed sweep
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          reason=$(cat "$RUNNER_TEMP/sweep-failure" 2>/dev/null || echo "the sweep failed; the token may be expired or lack scopes")
+          title="Governance sweep cannot run"
+          body="The daily governance sweep failed: ${reason}. Run: ${RUN_URL}. Until this is fixed, new and existing repos are not being opted in, bumped or protected (specs/governed-by-default, GBD-3.1)."
+          number=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"$title\")][0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
