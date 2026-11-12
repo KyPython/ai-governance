@@ -34,6 +34,11 @@ transfers; agents never do them (GBD-5). Order is dependency order. No code unti
 - [ ] **T3. Creation path** (GBD-2.2, GBD-2.3). Code PR: `ky-new-repo` pins `main`'s SHA live, and its docs
   name it as the only supported way to create a repo. The sweep keeps `repo-starter`'s pin current. Depends on:
   T1.
+- [ ] **T5. Creation preflight** (GBD-2.4, GBD-2.5). Code PR to `scripts/ky-new-repo` with tests citing GBD IDs:
+  - check the org ruleset before `gh repo create`, and create nothing if it cannot be confirmed;
+  - require `--allow-personal` for personal-account repos, and print the limit.
+
+  Depends on: spec merge. K3 must be done before org creation succeeds, which is intended.
 - [ ] **T4. README** (GBD-5.2). The three layers, the token scopes, and the personal-account limit. Can ride with
   T1.
 - [ ] **K5. Ky: per D1**, move personal repos into `KyLamportLogic` one by one (Settings, Transfer), reconnecting
@@ -42,7 +47,7 @@ transfers; agents never do them (GBD-5). Order is dependency order. No code unti
 | Requirement | Tasks |
 |---|---|
 | GBD-1 | K2, K3 |
-| GBD-2 | K4, T3 |
+| GBD-2 | K4, T3, T5 |
 | GBD-3 | K1, T1 |
 | GBD-4 | T2 |
 | GBD-5 | K1, K3, K4, K5, T4 |
