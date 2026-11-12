@@ -159,7 +159,8 @@ elif "AI-GOVERNANCE:v1" not in p.read_text():
 else:  # refresh an older copy of the canonical section
     import re
     t = p.read_text()
-    m = re.search(r"<!-- AI-GOVERNANCE:v1.*?\*\*Deploys follow governance\.\*\*[^\n]*\n", t, re.S)
+    # Ends after rule 12 plus any numbered rules that follow it (13, 14, ...), so a refresh never duplicates them.
+    m = re.search(r"<!-- AI-GOVERNANCE:v1.*?\*\*Deploys follow governance\.\*\*[^\n]*\n(?:\d+\. \*\*[^\n]*\n)*", t, re.S)
     if m:
         p.write_text(t[:m.start()] + sec + t[m.end():])
 PY
