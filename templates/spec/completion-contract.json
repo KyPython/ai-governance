@@ -1,0 +1,29 @@
+{
+  "contract_version": "1.0.0",
+  "task_id": "<SPEC-ID task id, e.g. CGW-T1>",
+  "instruction": "<the task's instruction, quoted from tasks.md or the approved brief>",
+  "instruction_source": "<where the instruction comes from, e.g. specs/<slug>/tasks.md on main>",
+  "authority_source": "<who approved it, e.g. Ky merged the spec-only PR #<n>>",
+  "completion_criteria": [
+    {
+      "check_id": "<CHK-id>",
+      "description": "<what this check proves, citing the requirement ID>",
+      "command": "<command that names the test, e.g. python3 -m pytest -q tests/test_<name>.py>",
+      "timeout_seconds": 300
+    }
+  ],
+  "out_of_authorization_actions": ["identity_borrowing", "<other action the agent must not take>"],
+  "enforcement_points": {"<boundary>": "<component that enforces it>"},
+  "immutable_boundaries": ["<boundary the agent may not disable or retry past>"],
+  "deny_route": "terminal_human_intervention_only",
+  "execution_contexts": ["<context the checks run in, e.g. ci_runner>"],
+  "inherited_fence": true,
+  "agent_identity": "<the agent's own identity, never a human's>",
+  "credential_grant": {"<credential>": "<scope it grants, or none>"},
+  "allowed_destinations": ["<host the checks may reach, or none>"],
+  "destination_trust": "<how each destination's trust is established>",
+  "send_contents": ["<what may leave, or none>"],
+  "approval_lifetime": "<how long the approval covers, e.g. single_dispatch>",
+  "drift_triggers": ["<change that voids the approval, e.g. command_mutation>"],
+  "periodic_evidence": null
+}
