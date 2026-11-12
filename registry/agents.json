@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "agents": [
+    {
+      "agent_id": "antigravity",
+      "role": "author",
+      "description": "Autonomous builder and implementation agent partner.",
+      "public_key": "01e9316a3561b13c7cb9d41b9d0bde54096b24fb7a4601494ad2029a0a020c63",
+      "permitted_capabilities": [
+        "repo:read",
+        "repo:write",
+        "subprocess:exec"
+      ]
+    },
+    {
+      "agent_id": "kiro",
+      "role": "reviewer",
+      "description": "Specification author and independent review agent.",
+      "public_key": "a57ea153373f6c700fbb89121b42083352bb79abf260ff9a7f036523494db3a4",
+      "permitted_capabilities": [
+        "repo:read",
+        "spec:read",
+        "spec:write",
+        "subprocess:exec"
+      ]
+    }
+  ]
+}
