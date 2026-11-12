@@ -60,6 +60,25 @@ The bake-off judge (`bakeoff/RESULT.md` in the Drive record, see Provenance) fou
 abbreviated flags are rejected (`allow_abbrev=False`); the signal handler ignores further SIGINT/SIGTERM while
 it writes evidence.
 
+## Agent wiring (CGW-5)
+
+- **CI (every agent's PRs):** the governance verdict runs a spec's `completion-contract.json` from the base
+  branch with the pinned gate (`governance.yml`, CGW-3). It is advisory until Ky makes it required.
+- **Rule (every agent):** `AGENTS.governance.md` rule 13, "Done means a VERIFIED completion gate", reaches
+  opted-in repos through `optin.sh`, plus the same text in each user-level rule file Ky's machine has.
+- **Kiro (hook):** `scripts/kiro_completion_stop.py` runs as a Kiro `Stop` hook, registered in
+  `~/.kiro/hooks/` with a command action (`python3 <checkout>/scripts/kiro_completion_stop.py`). It takes the
+  spec from the HEAD commit's `Spec:` line, the contract from `origin/<default branch>`, and the gate from
+  ai-governance's `origin/main`, then prints the verdict, evidence path and contract hash, or "not
+  gate-verified" with the reason. It always exits 0, so it never blocks or starts another agent turn.
+  - Its own code writes only its evidence file (`~/.local/share/completion-gate/evidence/`). The contract's
+    commands run in the working tree and can write whatever they write (see Limits).
+  - It does not fetch: the contract and gate are as fresh as each checkout's last `git fetch`. The gate is the
+    local `origin/main`, not a pinned SHA, and only the HEAD commit's `Spec:` line is read.
+- **Agents with no hook wired here (rule-only locally):** Codex, Antigravity/Gemini, Cursor, Claude Code, Copilot
+  and Grok Bot. Some of them support hooks; none is wired by this spec. Locally they get the rule only, and CI
+  is their enforcement, for PR work only.
+
 ## Limits (CGW-6.1)
 
 - For agents that can only be given a rule (no hook), the local completion rule is advisory. CI is what
