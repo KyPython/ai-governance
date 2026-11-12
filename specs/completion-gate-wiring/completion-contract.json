@@ -1,7 +1,7 @@
 {
   "contract_version": "1.0.0",
   "task_id": "CGW",
-  "instruction": "Wire the Completion Gate into every agent, in CI and locally (specs/completion-gate-wiring tasks T1 to T7).",
+  "instruction": "Wire the Completion Gate into every agent, in CI and locally (specs/completion-gate-wiring tasks T1 to T7; T8 is Ky's rollout).",
   "instruction_source": "specs/completion-gate-wiring/tasks.md on main",
   "authority_source": "Ky merged the spec-only PR #270",
   "completion_criteria": [
@@ -12,24 +12,69 @@
       "timeout_seconds": 900
     },
     {
+      "check_id": "CHK-CGW-2",
+      "description": "CGW-2.1 and CGW-2.3: the completion-contract template is valid and complete",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_contract_template.py",
+      "timeout_seconds": 300
+    },
+    {
+      "check_id": "CHK-CGW-3",
+      "description": "CGW-3.1 to CGW-3.6: the governance workflow's completion steps and verdict rule, run from the workflow itself",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_completion_step.py",
+      "timeout_seconds": 900
+    },
+    {
       "check_id": "CHK-CGW-4",
       "description": "CGW-4.1 and CGW-4.2: rule 13 wording, the AGENTS.md copy, and optin.sh delivering it without duplicates",
       "command": "python3 -m pytest -q -p no:cacheprovider tests/test_completion_rule.py",
       "timeout_seconds": 300
+    },
+    {
+      "check_id": "CHK-CGW-5",
+      "description": "CGW-5.1 to CGW-5.4: the Kiro Stop hook script and the README agent-wiring list",
+      "command": "python3 -m pytest -q -p no:cacheprovider tests/test_kiro_completion_stop.py",
+      "timeout_seconds": 600
     }
   ],
-  "out_of_authorization_actions": ["identity_borrowing", "edit_a_completion_contract", "edit_the_completion_gate", "pass_a_self_authored_audit_file", "merge_or_deploy"],
-  "enforcement_points": {"contract": "specs/ spec-path role rule (roles.yml)", "verdict": "ai-governance / verdict", "merge": "Ky"},
-  "immutable_boundaries": ["specs/completion-gate-wiring/completion-contract.json", "completion-gate/", "ai-governance / verdict"],
+  "out_of_authorization_actions": [
+    "identity_borrowing",
+    "edit_a_completion_contract",
+    "edit_the_completion_gate",
+    "pass_a_self_authored_audit_file",
+    "merge_or_deploy"
+  ],
+  "enforcement_points": {
+    "contract": "specs/ spec-path role rule (roles.yml)",
+    "verdict": "ai-governance / verdict",
+    "merge": "Ky"
+  },
+  "immutable_boundaries": [
+    "specs/completion-gate-wiring/completion-contract.json",
+    "completion-gate/",
+    "ai-governance / verdict"
+  ],
   "deny_route": "terminal_human_intervention_only",
-  "execution_contexts": ["ci_runner", "local_checkout"],
+  "execution_contexts": [
+    "ci_runner",
+    "local_checkout"
+  ],
   "inherited_fence": true,
   "agent_identity": "the coding agent assigned the CGW task, named in its PR",
-  "credential_grant": {"github_token": "contents: read in CI only; none for contract commands"},
-  "allowed_destinations": ["none"],
+  "credential_grant": {
+    "github_token": "contents: read in CI only; none for contract commands"
+  },
+  "allowed_destinations": [
+    "none"
+  ],
   "destination_trust": "no network destinations are needed by these checks",
-  "send_contents": ["none"],
+  "send_contents": [
+    "none"
+  ],
   "approval_lifetime": "the PR that names this spec",
-  "drift_triggers": ["contract change", "gate change", "spec change"],
+  "drift_triggers": [
+    "contract change",
+    "gate change",
+    "spec change"
+  ],
   "periodic_evidence": null
 }
