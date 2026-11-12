@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AgentRegistry",
+  "description": "Schema for the versioned local agent identity and capability registry.",
+  "type": "object",
+  "required": ["version", "agents"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Registry schema version."
+    },
+    "agents": {
+      "type": "array",
+      "description": "List of authorized agent identities.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "role", "public_key", "permitted_capabilities"],
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]+$",
+            "description": "Unique identifier for the agent (lowercase, alphanumeric, dashes or underscores)."
+          },
+          "role": {
+            "type": "string",
+            "enum": ["author", "reviewer", "auditor"],
+            "description": "Governed role assigned to the agent."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the agent's function."
+          },
+          "public_key": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Ed25519 public key in 64-character hex format."
+          },
+          "permitted_capabilities": {
+            "type": "array",
+            "description": "Explicit capabilities granted to this agent.",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_-]+:[a-z0-9_-]+$"
+            }
+          }
+        }
+      }
+    }
+  }
+}
