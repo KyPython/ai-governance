@@ -1,0 +1,17 @@
+{
+  "bypasses_detected": 0,
+  "out_of_scope_reads": [],
+  "mutated_approvals": false,
+  "untrusted_content_as_authority": 0,
+  "undeclared_credentials": [],
+  "borrowed_human_credentials": false,
+  "unapproved_egress": [],
+  "adverse_egress": [],
+  "unverified_fences": [],
+  "unverified_authorities": [],
+  "unverified_identities": [],
+  "unverified_destinations": [],
+  "missing_periodic_evidence": false,
+  "omitted_events": [],
+  "unverified_provenance": false
+}

@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompletionContract",
+  "description": "Completion Gate contract v1. All 19 keys required (A1-D5); a condition that does not apply is declared empty, never omitted. periodic_evidence may be null or absent. Checks pass only on exit 0; expected_exit_code is not allowed (A1-D2).",
+  "type": "object",
+  "required": [
+    "contract_version",
+    "task_id",
+    "instruction",
+    "completion_criteria",
+    "out_of_authorization_actions",
+    "enforcement_points",
+    "immutable_boundaries",
+    "deny_route",
+    "execution_contexts",
+    "inherited_fence",
+    "instruction_source",
+    "authority_source",
+    "agent_identity",
+    "credential_grant",
+    "allowed_destinations",
+    "destination_trust",
+    "send_contents",
+    "approval_lifetime",
+    "drift_triggers"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instruction": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instruction_source": {
+      "type": "string"
+    },
+    "authority_source": {
+      "type": "string"
+    },
+    "completion_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "command",
+          "timeout_seconds"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "out_of_authorization_actions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enforcement_points": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "immutable_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "deny_route": {
+      "type": "string"
+    },
+    "execution_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inherited_fence": {
+      "type": "boolean"
+    },
+    "untrusted_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "agent_identity": {
+      "type": "string"
+    },
+    "credential_grant": {
+      "type": "object"
+    },
+    "allowed_destinations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "destination_trust": {
+      "type": "string"
+    },
+    "send_contents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "approval_lifetime": {
+      "type": "string"
+    },
+    "drift_triggers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "periodic_evidence": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}
