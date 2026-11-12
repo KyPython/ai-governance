@@ -1,0 +1,8 @@
+{
+  "contract_version": "1.0.0",
+  "task_id": "TASK-2026-002",
+  "instruction": "Incomplete contract: no boundary declarations, no out_of_authorization_actions",
+  "completion_criteria": [
+    {"check_id": "CHK-01", "command": "true", "timeout_seconds": 5}
+  ]
+}

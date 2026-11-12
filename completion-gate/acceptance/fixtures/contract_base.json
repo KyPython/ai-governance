@@ -1,0 +1,26 @@
+{
+  "contract_version": "1.0.0",
+  "task_id": "ACC-TASK-001",
+  "instruction": "Neutral acceptance fixture instruction",
+  "instruction_source": "human_approved_brief",
+  "authority_source": "independent_enforcement_boundary",
+  "completion_criteria": [
+    {"check_id": "CHK-A", "description": "placeholder (tests overwrite commands)", "command": "true", "timeout_seconds": 20},
+    {"check_id": "CHK-B", "description": "placeholder (tests overwrite commands)", "command": "true", "timeout_seconds": 20}
+  ],
+  "out_of_authorization_actions": ["disable_sandbox", "out_of_scope_read", "identity_borrowing", "undeclared_network_egress"],
+  "enforcement_points": {"sandbox": "container_executor", "send_gate": "outward_action_send_gate"},
+  "immutable_boundaries": ["sandbox", "send_gate"],
+  "deny_route": "terminal_human_intervention_only",
+  "execution_contexts": ["top_process", "worker_thread"],
+  "inherited_fence": true,
+  "untrusted_inputs": ["web_pages", "local_preview_files", "agent_offered_links"],
+  "agent_identity": "agent-acceptance-worker-01",
+  "credential_grant": {"role": "scoped_tester", "allowed_system": "local_test_db", "prohibited_borrowing": ["human_credentials"]},
+  "allowed_destinations": ["127.0.0.1"],
+  "destination_trust": "loopback_only",
+  "send_contents": ["none"],
+  "approval_lifetime": "single_dispatch",
+  "drift_triggers": ["command_mutation", "sandbox_off"],
+  "periodic_evidence": null
+}

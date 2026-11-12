@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompletionEvidence",
+  "description": "Schema for Completion Gate evidence files (Spec ID: COMP)",
+  "type": "object",
+  "required": [
+    "run_id",
+    "task_id",
+    "contract_hash",
+    "timestamp_start",
+    "timestamp_end",
+    "checks",
+    "security_audit",
+    "reasoning_audit",
+    "verdict",
+    "verdict_reasons"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "contract_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "timestamp_start": {
+      "type": "string"
+    },
+    "timestamp_end": {
+      "type": "string"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "check_id",
+          "command",
+          "duration_seconds",
+          "exit_code",
+          "passed",
+          "stdout",
+          "stderr"
+        ]
+      }
+    },
+    "security_audit": {
+      "type": "object",
+      "required": [
+        "deny_events",
+        "bypasses_detected",
+        "credential_grants_used",
+        "external_sends"
+      ]
+    },
+    "reasoning_audit": {
+      "type": "object",
+      "required": [
+        "reasoning_transparency",
+        "self_override_suspected"
+      ],
+      "properties": {
+        "reasoning_transparency": {
+          "type": "string",
+          "enum": ["CAPTURED", "UNKNOWN", "REDACTED", "NONE"]
+        },
+        "self_override_suspected": {
+          "type": "boolean"
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["VERIFIED", "FAILED", "UNKNOWN"]
+    },
+    "verdict_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}
