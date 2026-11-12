@@ -81,6 +81,12 @@ opt-in.
    section, and `CODEOWNERS`.
 3. GBD-2.3 `KyPython/repo-starter` SHALL stay a template whose caller pins a SHA no older than the sweep accepts
    (GBD-3.3).
+4. GBD-2.4 WHEN `ky-new-repo` targets an org THEN it SHALL confirm, before creating the repo, that the org has an
+   active ruleset requiring `ai-governance / verdict` on the default branch of all repositories. IF it cannot
+   confirm that (ruleset missing or inactive, the check not required, or the token lacks `admin:org`) THEN it
+   SHALL create nothing, exit non-zero, and print the reason and the fix.
+5. GBD-2.5 WHEN `ky-new-repo` targets a personal account THEN it SHALL refuse unless `--allow-personal` is given,
+   and SHALL print that a personal repo cannot be blocked at creation and is only covered by the daily sweep.
 
 ### Requirement 3: Every existing repo is swept onto the gate and kept current (GBD-3)
 
