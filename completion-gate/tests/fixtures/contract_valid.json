@@ -1,0 +1,25 @@
+{
+  "contract_version": "1.0.0",
+  "task_id": "TASK-2026-001",
+  "instruction": "Canonical human instruction verbatim (E-4)",
+  "instruction_source": "human_approved_brief",
+  "authority_source": "independent_enforcement_boundary",
+  "completion_criteria": [
+    {"check_id": "CHK-01", "description": "Unit tests pass", "command": "python3 -c 'print(\"Tests passed\")'", "timeout_seconds": 30},
+    {"check_id": "CHK-02", "description": "Exit clean", "command": "python3 -c 'import sys; sys.exit(0)'", "timeout_seconds": 15}
+  ],
+  "out_of_authorization_actions": ["disable_sandbox", "out_of_scope_read", "identity_borrowing", "undeclared_network_egress"],
+  "enforcement_points": {"sandbox": "container_executor", "gate": "gate.py", "send_gate": "outward_action_send_gate"},
+  "immutable_boundaries": ["sandbox", "gate.py", "scopes.json"],
+  "deny_route": "terminal_human_intervention_only",
+  "execution_contexts": ["top_process", "worker_thread"],
+  "inherited_fence": true,
+  "agent_identity": "agent-completion-worker-01",
+  "credential_grant": {"role": "scoped_tester", "allowed_system": "local_test_db", "prohibited_borrowing": ["ky_human_credentials", "admin_pat"]},
+  "allowed_destinations": ["127.0.0.1"],
+  "destination_trust": "loopback_only",
+  "send_contents": ["none"],
+  "approval_lifetime": "single_dispatch",
+  "drift_triggers": ["command_mutation", "target_mutation", "sandbox_off"],
+  "periodic_evidence": null
+}
