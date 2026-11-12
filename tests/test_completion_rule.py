@@ -19,6 +19,8 @@ RULE_13 = (
     "evidence path and the contract hash (the evidence file's `contract_hash`). FAILED or UNKNOWN means the task "
     "is not done; say so in those words. When no contract exists, say \"no completion contract; not "
     "gate-verified\". Never write, edit or delete a contract, pass an `--audit` file you authored, or edit the gate."
+    " Put the `Spec: specs/<slug>` reference on a line of its own, in the PR body and in every commit message for the task:"
+    " the governance verdict and the Kiro stop hook only read a `Spec:` reference that starts its line."
 )
 
 
