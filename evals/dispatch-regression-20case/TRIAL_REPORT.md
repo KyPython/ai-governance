@@ -48,3 +48,8 @@ require an actual sandboxed dispatch adapter, trustworthy approval storage,
 external-effect instrumentation, atomic consumption under concurrency, and
 tests for bypasses, revocation races, retries, and transport failure recovery.
 The in-memory simulated gate does not establish those properties.
+
+## Owner decision (2026-11-09)
+
+- Owner selected Option 1: bless this 20-case reference gate as the single proof asset (reference behavior only, no prod claims). EffectProof remains parked.
+- Bounded next: independent second-reviewer replay of the same 20 frozen cases against `CHECKSUMS.json` in already-scheduled OSS/AI-governance work. No new tracker, no publish, no paid runs.
