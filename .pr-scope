@@ -1,5 +1,0 @@
-.github/workflows/governance.yml
-.github/workflows/sweep.yml
-requirements.txt
-.pr-scope
-tests/test_workflow_shell_syntax.py
