@@ -75,6 +75,7 @@ jobs:
           else
             echo "Governance sweep REPORT ONLY; set SWEEP_APPLY=true after owner review to enable writes."
             ./scripts/sweep.sh
+          fi
 
       # GBD-3.1: a sweep that cannot run is reported, not silent.
       - name: Report a failed sweep
@@ -87,7 +88,11 @@ jobs:
           set -euo pipefail
           reason=$(cat "$RUNNER_TEMP/sweep-failure" 2>/dev/null || echo "the sweep failed")
           title="Governance sweep cannot run"
-          gh issue list --repo "$REPO" --state open --json number,title --jq . | head -n 1
-        }
-
+          body="The daily governance sweep failed: ${reason}. Run: ${RUN_URL}. Until this is fixed, new and existing repos are not being opted in, bumped or protected (specs/governed-by-default, GBD-3.1)."
+          number=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"$title\")][0].number // empty")
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
           fi
