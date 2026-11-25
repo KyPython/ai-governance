@@ -34,6 +34,13 @@ identity spec (draft, Ky's Nov 17 review), deploys, and any repo outside the opt
   - which file Antigravity reads its user rules from (`~/.gemini/GEMINI.md` is likely, not confirmed);
   - where Kiro's global steering lives on this machine (no `~/.kiro/steering/` directory exists);
   - whether Codex Cloud, Cursor background agents and Copilot read anything beyond the repo's `AGENTS.md`.
+  - whether the gate's Drive source folder records `completion-gate/` in this repo as canonical (UNKNOWN as of
+    2026-11-24). The folder was found at `My Drive/05 - ENGINEERING & RESEARCH/Spec Briefs & Evals/Completion Gate
+    Spec/`, but its `SOURCE-OF-TRUTH.md` could not be read (the Drive read timed out). CGW-1.3 depends on it,
+    because it requires `SOURCE-OF-TRUTH.md` to record the Drive copy as historical. CGW-1.3 is neither confirmed
+    done nor confirmed failed. Reproduction: read `SOURCE-OF-TRUTH.md` in that folder and check whether it records
+    the Drive copy as historical and `completion-gate/` here as canonical. Record the result here only after that
+    check.
 
 ## Requirements
 
