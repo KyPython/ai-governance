@@ -37,9 +37,31 @@ tricks, and must print which condition failed.
 ## Permissions
 
 `verdict` gets `permissions: {checks: read}`. A reusable workflow cannot exceed
-the caller's grant, so callers that set `run-quality: false` must grant
-`checks: read` and pass `prerequisite-check`. README and
-`docs/quality/system-evidence.md` document that (this changes the hash, SECFC-7.11).
+the caller's grant, and GitHub checks the grant when the run starts. So every
+caller grants `checks: read` on the calling job, not only callers that set
+`run-quality: false` (corrected after F2; the first version of this design said
+only those callers). Callers that set `run-quality: false` also pass
+`prerequisite-check`.
+
+Caller job shape (self-test.yml and the template):
+
+```yaml
+  ai-governance:
+    permissions:
+      contents: read
+      checks: read
+    uses: ./.github/workflows/governance.yml   # or KyPython/ai-governance/...@<sha>
+```
+
+Granting it on the calling job keeps the workflow-level default at
+`contents: read`. Other jobs in the reusable workflow keep their own narrower
+`permissions`. README and `docs/quality/system-evidence.md` document the grant
+(this changes the hash, SECFC-7.11).
+
+Rollout order (F3): each external caller adds the grant while still on its
+current pin (a no-op there), then Ky moves the pin. Moving the pin first fails
+that repo at startup. Rollback: revert the verdict change; the extra grant is
+harmless on older pins.
 
 ## Test design (SECFC-7.10)
 

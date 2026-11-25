@@ -114,13 +114,33 @@ Verified failure:
 
 Intended existing behavior: SECFC-1.1 to SECFC-1.3 (merged in #233).
 
+Verified failure (added 2026-11-25, PR #315 head 14d1481):
+- F2. With `checks: read` on the reusable `verdict` job, the in-repo caller
+  `.github/workflows/self-test.yml` (top-level `permissions: contents: read`)
+  ended in `startup_failure`; no governance job ran
+  (https://github.com/KyPython/ai-governance/actions/runs/45586369687). GitHub
+  showed "This run likely failed because of a workflow file issue"; the API gave
+  no annotation. GitHub documents that permissions in a reusable-workflow chain
+  can only be maintained or reduced, not elevated
+  (https://docs.github.com/en/actions/using-workflows/reusing-workflows). The
+  link between F2 and that rule is an inference: it is the only permission
+  change in the PR.
+- F3. Consequence: the grant is checked when the run starts, for every caller,
+  whatever `run-quality` is. Every caller must grant `checks: read` before its
+  pin moves to a commit containing SECFC-7.8.
+
 Unknowns (reproduce before the implementation PR relies on them):
-- U1. Whether a caller that grants only `contents: read` makes the check-runs
-  API return 403 to the `verdict` job. Reproduce in a throwaway repo.
+- U1. Answered by F2 and F3 (startup failure, not a 403). A caller that grants
+  `checks: read` and still gets a 403 is not reproduced; the step fails closed.
 - U2. Which check run to trust when a re-run leaves several runs with the same
   name on one SHA.
-- U3. Whether any repo outside `KyPython/ai-governance` passes
-  `prerequisite-result`. Code search found no caller inside this repo.
+- U3. Answered 2026-11-25: GitHub code search found 13 callers outside this
+  repo. None sets `run-quality`, `prerequisite-result` or any `checks:`
+  permission. Pins: `bacf04c` (adaption-authz-simulator, scribe-note-audit,
+  odin-recording-preparation, odin-tasks, skills-hello-github-actions),
+  `c2b9fc3` (buildlogic-governance, ky-cloud-control-plane, claim-checker,
+  repair-bench, visit-taniti), `8da4ed4` (ple-verified-harness), `53462a0`
+  (KyPython/KyPython, repo-starter). Code search may miss private repos.
 - U4. How `push` and `merge_group` events should resolve the head SHA.
 
 Residual limit (not fixed by this requirement): the check name is chosen by the
@@ -153,7 +173,13 @@ review of the caller workflow remain the control for that.
 7. SECFC-7.7 WHEN run-quality is true THEN SECFC-1.2 applies unchanged and the
    API evidence is not required.
 8. SECFC-7.8 The `verdict` job SHALL request `checks: read` and nothing more,
-   and SHALL NOT request any write permission.
+   and SHALL NOT request any write permission. Because a called workflow cannot
+   exceed its caller's grant (F2, F3), every caller SHALL grant `checks: read`
+   to the job that calls the reusable workflow, whatever `run-quality` is. The
+   in-repo caller `.github/workflows/self-test.yml` and
+   `templates/ai-governance.yml` SHALL grant it in the same PR as the verdict
+   change. External callers MUST grant it before their pin moves to that commit;
+   only Ky moves pins.
 9. SECFC-7.9 The verdict step SHALL stay one shell script that passes
    `bash -n`, and `tests/test_workflow_shell_syntax.py` SHALL cover it.
 10. SECFC-7.10 Tests SHALL cover these negative cases, each ending in
