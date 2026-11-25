@@ -1,6 +1,6 @@
 # Requirements: Declare each PR's file manifest in its body, not in a committed `.pr-scope`
 
-Spec ID: PRS · Issue: #310 · Status: proposed; Ky approves by merging this spec-only PR
+Spec ID: PRS · Issue: #310 · Status: proposed; Ky approves by merging this spec-only PR. Revised 2026-11-25 after #311 merged (see Evidence states).
 
 Provenance: drafted by Kiro on 2026-11-25 for Ky (goal: unblock `diff-hygiene / hygiene` on spec-only PRs). Ky owns the sentences; coders implement them and must not paraphrase them to fit the code.
 
@@ -19,13 +19,16 @@ This spec does not cover:
 
 ## Evidence states
 
-Observation date 2026-11-25, `origin/main` at `2b480c0ce9852c92a45dd00a4184edd08449ca2f`.
+Observation date 2026-11-25. V1 to V5 and F1 to F2 were first observed at `2b480c0ce9852c92a45dd00a4184edd08449ca2f`. V6 to V8 were observed after #311 merged (`87e341541264c65abc060de229af37bd6ef842e9`).
 
 ### Verified current behavior
-- V1. `.pr-scope` was added to `main` by #233 (6c667f4) with 17 stale paths. After #309 it lists 5 paths: `.github/workflows/governance.yml`, `.github/workflows/sweep.yml`, `requirements.txt`, `.pr-scope`, `tests/test_workflow_shell_syntax.py`. (Observed in a fresh clone at `2b480c0`.)
-- V2. The diff-hygiene script reads the manifest from a committed `.pr-scope` first (one path per line, an exact path or a prefix ending `/`). Only when that file is absent does it read a `## Files touched` section of the PR body (env `PR_BODY`). It fails with `files outside declared manifest`. (Reported by Ky from the script at the pinned SHA; this spec's author did not re-read the script.)
+- V1. (Historical, true at `2b480c0`; superseded by V6.) `.pr-scope` was added to `main` by #233 (6c667f4) with 17 stale paths. After #309 it lists 5 paths: `.github/workflows/governance.yml`, `.github/workflows/sweep.yml`, `requirements.txt`, `.pr-scope`, `tests/test_workflow_shell_syntax.py`. (Observed in a fresh clone at `2b480c0`.)
+- V2. The diff-hygiene script reads the manifest from a committed `.pr-scope` first (one path per line, an exact path or a prefix ending `/`). Only when that file is absent does it read a `## Files touched` section of the PR body (env `PR_BODY`). It fails with `files outside declared manifest`. (Re-read 2026-11-25 from `run-diff-hygiene.js` at the pinned SHA: `parseManifest()` uses `.pr-scope` in the working directory if it exists, otherwise the `## Files touched` section of `PR_BODY`, stripping a leading `-` or `*` marker and backticks.)
 - V3. `.github/workflows/accessibility.yml` runs `diff-hygiene` as a separate workflow from `governance.yml`; `governance.yml` has no reference to hygiene. (Read in the clone.)
 - V4. The policy step of `governance.yml` treats a PR whose changed files are all exempt by path rule, with at least one under `specs/` or `.kiro/specs/`, as a spec-only PR, and does not require the `Spec:` target to exist on base for that PR. `.pr-scope` matches none of the exempt patterns (`DOC_RE`, `META_RE`, `CONFIG_RE`, `LOCK_RE`, requirements files, `roles.yml`), so it counts as code. A PR with code and spec paths fails.
+- V6. Ky merged #311 (`87e341541264c65abc060de229af37bd6ef842e9`) before this spec. On `main` after that merge, `.pr-scope` is no longer tracked at the repository root (the commit deletes it). This is the state PRS-1.1 requires.
+- V7. #311 added `tests/test_no_committed_pr_scope.py`. Its test `test_GATE_1_5_pr_scope_is_not_tracked_in_repo_root` cites GATE-1.5 of `specs/ai-governance-gate`, not a PRS ID, because #311 merged before this spec existed. The guard therefore shipped without its own spec; the Codex review thread on #311 asked for one. This spec supplies it. Until the follow-up in tasks.md task 7 lands, the test does not cite PRS-1.1, so PRS-2.3 is not yet met.
+- V8. Also merged since the first draft: #303 (inspect-ass bump to 0.3.291) and #309 (CI repair). Neither touches `.pr-scope` semantics. (Not re-read in detail here.)
 - V5. Ruleset `main ruleset` (id 26571875, enforcement active, target `refs/heads/main`) requires both `ai-governance / verdict` and `diff-hygiene / hygiene`. Ruleset `main` (id 26302736) requires only `ai-governance / verdict`. Both list one bypass actor: repository role id 5 (admin), mode `always`.
 
 ### Intended existing behavior
@@ -34,12 +37,12 @@ Observation date 2026-11-25, `origin/main` at `2b480c0ce9852c92a45dd00a4184edd08
 
 ### Verified failures
 - F1. PRs #305, #306, #307 and #308 each failed `diff-hygiene / hygiene` with `files outside declared manifest` until the file was overridden. #304 passed only because `governance.yml` happened to be listed.
-- F2. A spec-only PR cannot update `.pr-scope`, because the policy gate counts it as code (V4). So a spec-only PR that is not in the stale manifest cannot pass hygiene.
+- F2. (Historical; the cause was removed by #311.) A spec-only PR cannot update `.pr-scope`, because the policy gate counts it as code (V4). So a spec-only PR that is not in the stale manifest cannot pass hygiene.
 
 ### Unknowns
 - U1. Resolved 2026-11-25: `diff-hygiene / hygiene` IS a required status check on `main` (V5, ruleset 26571875). Admins can bypass.
 - U2. Resolved 2026-11-25: `ai-governance / verdict` does not depend on hygiene (V3). They are separate workflows and checks.
-- U3. Open: whether the diff-hygiene script reads `.pr-scope` from the PR head checkout or from the base. This decides whether #311, which deletes the file in its branch, passes hygiene without a bypass.
+- U3. Resolved 2026-11-25 by reading code, not by a CI observation: neither head nor base exactly. The reusable workflow `diff-hygiene.reusable.yml` at the pinned SHA runs `actions/checkout` with no `ref`, and `run-diff-hygiene.js` reads `.pr-scope` from that working directory. For a `pull_request` event, `actions/checkout` defaults to the PR merge ref (head merged into base). So the file is read from the merged tree: a PR that deletes `.pr-scope` sees it absent and falls back to the body; a PR that does not touch it sees base's copy. The checkout default is documented behavior of the action, not re-run here. Consequence: with `.pr-scope` gone from `main` (V6), hygiene reads the body manifest.
 - U4. Open: whether a PR branch that carries a `.pr-scope` can pass CI, given PRS-2.1 as written (see PRS-4.1).
 
 ## Requirements

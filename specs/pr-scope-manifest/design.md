@@ -4,14 +4,14 @@ Spec ID: PRS
 
 ## Overview
 
-Remove the committed `.pr-scope` from `main`, add a test that fails if it is tracked again, and document the PR-body manifest format. No workflow, gate, role, or ruleset changes. Evidence states and Unknowns are in `requirements.md`.
+Keep the committed `.pr-scope` off `main`, keep a test that fails if it is tracked again, and document the PR-body manifest format. No workflow, gate, role, or ruleset changes. The deletion and the test already shipped in #311 (merged before this spec); this spec supplies the requirements they trace to. Evidence states and Unknowns are in `requirements.md`.
 
 ## Architecture / components
 
 | Component | Owner | Role | Changed by this spec's implementation? |
 |---|---|---|---|
-| `.pr-scope` (repo root) | this repo | Committed manifest read first by hygiene (V2) | Deleted (PRS-1.1) |
-| `tests/test_no_committed_pr_scope.py` | this repo | Guard test | Added (PRS-2.1 to 2.3), already drafted in #311 |
+| `.pr-scope` (repo root) | this repo | Committed manifest read first by hygiene (V2) | Deleted by #311 (PRS-1.1 holds on `main`) |
+| `tests/test_no_committed_pr_scope.py` | this repo | Guard test | Added by #311; cites GATE-1.5, so PRS-2.3 needs the follow-up (tasks.md task 7) |
 | `diff-hygiene / hygiene` | `KyLamportLogic/buildlogic-governance@c9edd8f5...` | Compares changed files to manifest | No |
 | `governance.yml` policy step | this repo | Counts `.pr-scope` as code (V4) | No (PRS-4.2) |
 | PR body `## Files touched` | PR author | Manifest after the file is gone | Convention (PRS-1.2, PRS-3.1) |
@@ -26,15 +26,15 @@ Guard test shape (behavioral, not a source-text check): run `git ls-files -- .pr
 
 - Stale file returns: the guard test fails with a message naming `.pr-scope` and `PRS-1.1`.
 - Author omits a path: hygiene fails with `files outside declared manifest` (PRS-3.2). Fix by editing the PR body with `gh api -X PATCH`.
-- Bootstrap deadlock (verified, F2 plus V5): this spec PR and #311 touch paths absent from the stale 5-path manifest. This spec PR therefore fails `diff-hygiene / hygiene`, which ruleset 26571875 requires. It passes `ai-governance / verdict` independently (U2). Only an admin bypass merges it. #311 is a code PR, so its `Spec:` line must name a spec already on `main`; it cannot go first.
-- Order that avoids a second bypass (inference, depends on U3): merge this spec with Ky's admin bypass, then #311 cites `Spec: specs/pr-scope-manifest`. If hygiene reads `.pr-scope` from the PR head, #311 (which deletes it) passes on its own. If it reads from the base, #311 needs a bypass too.
+- Historical: bootstrap deadlock (F2 plus V5). While the stale 5-path `.pr-scope` was on `main`, this spec PR and #311 touched paths absent from it, so both would fail `diff-hygiene / hygiene`, which ruleset 26571875 requires. #311 is a code PR whose `Spec:` line must name a spec already on `main`, so it could not wait for this spec.
+- Historical: resolution. Ky merged #311 first (`87e3415`), which deleted `.pr-scope`. With the file gone, hygiene reads the PR body (V2, U3), so this spec PR no longer depends on the stale manifest. Whether hygiene now passes on this PR is recorded in the PR, not asserted here.
 - Per-PR file on a PR branch: fails the guard test (PRS-4.1 note, U4).
 
 ## Options considered
 
 | Option | Result | Why not chosen |
 |---|---|---|
-| Delete `.pr-scope`, add guard test (chosen) | Matches #310 proposal; no gate change | Needs one admin bypass to bootstrap. |
+| Delete `.pr-scope`, add guard test (chosen; done by #311) | Matches #310 proposal; no gate change | Needed #311 to merge before its spec; resolved by merging in that order. |
 | Exempt `.pr-scope` in the policy gate so spec PRs can edit it | Spec-only PRs could update the file | Edits the gate (AGENTS.md rule 7); out of scope. Keeps a per-PR file living on `main`. |
 | Remove `diff-hygiene / hygiene` from required checks | Unblocks PRs | Changes a ruleset and weakens enforcement; Ky's decision, not this spec's. |
 
@@ -51,5 +51,5 @@ Guard test shape (behavioral, not a source-text check): run `git ls-files -- .pr
 
 ## Human gates
 
-- HOLD 1: Ky merges this spec-only PR (needs admin bypass of the hygiene check, see above).
-- HOLD 2: Ky merges the code PR (#311 or a replacement) after review by a different agent.
+- HOLD 1: Ky merges this spec-only PR.
+- HOLD 2: Ky merges the follow-up PR that updates the guard test's citation (tasks.md task 7), after review by a different agent. #311 is already merged.
