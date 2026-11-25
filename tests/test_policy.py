@@ -34,7 +34,13 @@ CURSOR_REAL = ("Cursor Agent", "cursoragent@cursor.com")
 WEBFLOW = ("GitHub", "noreply@github.com")
 
 
+# Keep temp-repo git commands independent of the developer's global/system git config (e.g. a global
+# core.excludesFile that ignores `.kiro/specs/` would stop `git add -A` from staging spec fixtures).
+GIT_ISOLATION = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
+
+
 def sh(cwd, *args, env=None):
+    env = {**(os.environ if env is None else env), **GIT_ISOLATION}
     return subprocess.run(args, cwd=cwd, check=True, capture_output=True, text=True, env=env).stdout.strip()
 
 
@@ -61,7 +67,7 @@ class Repo:
 
     def commit(self, msg, author=KY, committer=None):
         committer = committer or author
-        env = dict(os.environ, GIT_AUTHOR_NAME=author[0], GIT_AUTHOR_EMAIL=author[1],
+        env = dict(os.environ, **GIT_ISOLATION, GIT_AUTHOR_NAME=author[0], GIT_AUTHOR_EMAIL=author[1],
                    GIT_COMMITTER_NAME=committer[0], GIT_COMMITTER_EMAIL=committer[1])
         sh(self.dir, "git", "add", "-A")
         sh(self.dir, "git", "commit", "-q", "--allow-empty", "-m", msg, env=env)
@@ -71,7 +77,7 @@ class Repo:
                author=KY, committer=None, opener="KyPython", repo="KyPython/demo", roles=None, output=None, head_sha=None):
         head = self.commit("change", author, committer)
         summary = self.dir / ".summary"
-        env = dict(os.environ, EVENT_NAME="pull_request", PR_TITLE=title, PR_BODY=body, PR_BASE_SHA=self.base,
+        env = dict(os.environ, **GIT_ISOLATION, EVENT_NAME="pull_request", PR_TITLE=title, PR_BODY=body, PR_BASE_SHA=self.base,
                    PR_HEAD_SHA=head if head_sha is None else head_sha, PR_HEAD_REF=head_ref, PUSH_BEFORE="", PUSH_AFTER=head, REQUIRE_ISSUE="false",
                    ENFORCE_TITLE="true", STC_MODE="off", BASELINE_MODE="changed", PR_AUTHOR=opener, REPO=repo,
                    ROLES_FILE=str(self.roles_file if roles is None else roles), GITHUB_STEP_SUMMARY=str(summary), GITHUB_OUTPUT=str(output or os.devnull))
