@@ -59,3 +59,50 @@ Negative controls: an always-blocking adapter fails the eligible positive case; 
 ## Stop and rollback conditions
 
 Stop affected work on missing scope/source identity, revoked authority, unapproved spend, unknown effects, invalid ownership or failed required checks. Preserve artifacts and attempts. Revert to manual neutral drafts without changing gates, erasing evidence, launching duplicate work, touching upstream HOT projects or modifying the adopted accessibility requirements. Only human-reviewed deployment changes can restore a cloud route.
+
+---
+
+<!-- KIRO-AUTHORED TASKS AMENDMENT (R1) — HUMAN ADOPTION/MERGE PENDING. RUNTIME ACCEPTANCE NOT RUN.
+Issue: https://github.com/KyPython/ai-governance/issues/219 · Source: KyPython/ai-governance@53462a0 · Author: Kiro (spec-author), local session 2026-11-25; model ID not exposed. -->
+
+# Tasks — Revision R1 (capability-qualified routing)
+
+Status: proposed; no coder has been dispatched and none is authorized by this amendment. T1 to T7 above are unchanged. These tasks continue under existing issue #219 and create no new issue, branch assignment or PR.
+
+Every task below is UNAUTHORIZED until Ky merges this spec and issues a separate task grant that names the exact repository, base SHA, paths, operations, principal and expiry. A merged spec is not implementation authority. For each coder task, one coder works in its own PR and a different authenticated principal reviews. The coder and reviewer are chosen per task from the capability registry once it exists (CONT-13). Until then they are UNASSIGNED and Ky names them.
+
+Dependency order: T8 → T9 → {T10, T11} → T12.
+
+| Task | Scope and prerequisite | Requirement IDs | Acceptance evidence / state |
+| --- | --- | --- | --- |
+| T8 | Ky reviews the exact R1 requirement, design, scenario and task bytes and adopts or changes them by merging a spec-only PR. Ky also decides whether #219 is reopened, where the registry lives, and which thresholds apply to which stage. | CONT-02-R1, 05-R1, 06-R1, 08-R1 to 12-R1, 13, 14, 15 | Exact-file review and spec merge. PENDING HUMAN REVIEW. |
+| T9 | After T8, reconcile the capability registry with the AIV registry: a schema extension and a validator that reports `ROLE_CONFLICT` and `SINGLE_CANDIDATE`. No candidate is enrolled by this task. Registry changes need Ky's merge. | CONT-13 | Validator rejects self-modification (A1), reports conflicts (A4), and a registry change alone swaps a candidate (S2). NOT IMPLEMENTED. Coder/reviewer UNASSIGNED. |
+| T10 | After T9, implement the deterministic selector, per-stage fallback, and fenced reassignment against inert providers and a controlled clock. No model is launched and no paid call is made. Recheck authority at dispatch and again before publication. | CONT-02-R1, 05-R1, 08-R1, 09-R1, 10-R1, 11-R1, 12-R1, 15 | Scenarios S1, S3, A2, A5 to A7, A9 to A11, A13 to A16 pass for the right reason at the named boundary. Negative controls in `scenarios.md` fail as stated. NOT IMPLEMENTED. |
+| T11 | After T9, design the stage evaluation fixtures and the recording format (run ID, input SHA, fixtures, outcomes, capacity). Running any evaluation against a real provider needs a separate, budgeted authorization from Ky. | CONT-06-R1, 14 | Fixture set with positive and counterexample cases per stage. Scenarios A3, A8 and A12 pass. No provider call is made by this task. NOT IMPLEMENTED. |
+| T12 | Hand Ky the proposed wording for `roles.yml` and `AGENTS.governance.md` as the existing ESE T10 request. The text is not applied by an agent. Ky decides, merges and verifies enforcement. | CONT-13 | A reviewable text proposal with a rollback and a verification plan. Applied by no one until Ky requests and merges it. NOT AUTHORIZED. |
+
+T10 and T11 can proceed in parallel after T9. T12 waits for T8 and does not block T9 to T11, because T9 to T11 touch no protected path.
+
+## R1 traceability
+
+| Requirement | Tasks |
+| --- | --- |
+| CONT-02-R1 | T8, T10 |
+| CONT-05-R1 | T8, T10 |
+| CONT-06-R1 | T8, T11 |
+| CONT-08-R1 | T8, T10 |
+| CONT-09-R1 | T8, T10 |
+| CONT-10-R1 | T8, T10 |
+| CONT-11-R1 | T8, T10 |
+| CONT-12-R1 | T8, T10 |
+| CONT-13 | T8, T9, T12 |
+| CONT-14 | T8, T11 |
+| CONT-15 | T8, T10 |
+
+## Stop and rollback conditions (R1)
+
+Stop affected work on a missing scope, source identity, grant or budget, on a revoked authority, on an unknown effect, on a `ROLE_CONFLICT`, or on a failed required check. Preserve artifacts and attempts. Return to the manual draft route. Do not edit a gate, a contract or `roles.yml` to proceed.
+
+## Completion
+
+No completion contract exists for `specs/kiro-credit-failover`: no completion contract; not gate-verified. A contract, if wanted, is Ky's or the owner route's to add. This amendment does not write one.

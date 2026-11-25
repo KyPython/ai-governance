@@ -58,3 +58,112 @@ Use inert providers, controlled clocks and observable attempted calls, ownership
 If any acceptance invariant fails, stop new automated claims, preserve receipts and uncertain effects, revoke stale ownership, and return to the existing manual draft mode. Never rollback by replaying a possibly completed request or clearing prior evidence. Human owners control any deployed route rollback.
 
 Alternatives: manual kit continuation works now with human transfer and no extra service; a reviewed automatic adapter reduces handoff work but requires actual state/capability enforcement; repeating Kiro dispatch or changing Kiro interfaces cannot solve shared monthly exhaustion. This draft selects the existing manual path now and proposes automation only after its prerequisites.
+
+---
+
+<!-- KIRO-AUTHORED DESIGN AMENDMENT (R1) — HUMAN ADOPTION/MERGE PENDING. RUNTIME ACCEPTANCE NOT RUN.
+Issue: https://github.com/KyPython/ai-governance/issues/219 · Source: KyPython/ai-governance@53462a0 · Author: Kiro (spec-author), local session 2026-11-25; model ID not exposed. -->
+
+# Design — Revision R1: fixed gates, dynamic providers
+
+Status: proposed; supports requirements CONT-02-R1 to CONT-15 in `requirements.md`. No production implementation, role change, registry edit or cloud activation is part of this amendment.
+
+## Five separate concepts
+
+Keep these apart in every record and report. A name in one layer never stands in for evidence in another.
+
+| Layer | Meaning | Where it lives |
+| --- | --- | --- |
+| Stage | G0 intake and BDD discovery, G1 sourced outcomes, G2 requirements/design/tasks and owner spec-only merge, G3 acceptance scenarios, G4 tests-first RED, G5 bounded implementation, G6 independent verification. Fixed. | ESE spec (ESE-1) |
+| Capability class | The kind of work: evidence research, BDD discovery, spec design, scenario authoring, test synthesis, coding and debugging, independent verification and security review. | Capability registry |
+| Candidate | Provider, model identifier or family and version, harness, permitted environment. A named IDE or agent is an interface, not proof of competence. | Capability registry |
+| Authenticated principal | The identity that actually acts, verifiable by the enforcing boundary. Not a Git author, a Ky-token appearance, a free-text model name or an issue comment. | AIV registry and token engine |
+| One-time authorization | Ky's grant for exact repo, issue, spec SHA, stage, principal, paths, operations, expiry, revocation and budget. | Owner channel (B1, not yet demonstrated) |
+
+The selector is a deterministic function of the registry, the evaluation evidence, the availability evidence and the grant. It reads those inputs and returns an eligible set. It writes nothing, approves nothing, and cannot change its inputs.
+
+## Proposed constraint: extend one identity authority
+
+The AIV registry (`registry/agents.json`, merged) already records agent identities, per-agent capabilities and public keys, and AIV-2.4 already requires `approver != requester`. The capability registry SHOULD be an extension of that record, keyed so one agent identity has one authority. A second parallel identity store would let the two disagree about who an agent is. Where the AIV `role` field and a capability entry disagree, the validator reports `ROLE_CONFLICT` and rewrites neither (CONT-13).
+
+The AIV pilot pair assigns `antigravity` the role `author` and `kiro` the role `reviewer`. R1 treats that pair as existing data, not as a policy. It does not edit it. Whether the pilot pair stays, is generalized, or is retired is Ky's decision under the AIV spec.
+
+This is a proposed implementation constraint. Where the capability registry lives is UNKNOWN until Ky decides (see "R1 unresolved facts").
+
+## Selection, then authorization
+
+1. Build the candidate set for the stage from enrolled entries (CONT-13).
+2. Keep candidates with a current, stage-specific evaluation that meets the adopted thresholds (CONT-14). With no adopted threshold, the set is empty and the result is `THRESHOLD_UNSET`, which routes the choice to Ky.
+3. Keep candidates whose provider shows available by trusted evidence, or whose unavailability is unknown but not confirmed. Prompt text and self-reports count for nothing (CONT-02-R1).
+4. Among what remains, order by cost and latency only (CONT-14). This order never overrides steps 1 to 3.
+5. Report the set, including `SINGLE_CANDIDATE` where it has one member.
+6. Ky's grant names one principal for one task and phase. Only the grant authorizes dispatch (CONT-12-R1). Selection alone does not.
+
+If the set is empty, apply the fallback column below.
+
+## Per-stage fallback matrix (CONT-15)
+
+Columns read left to right. "Draft-only" means output outside Git and outside protected paths, labeled as an unapproved draft with actual attribution (CONT-05-R1).
+
+| Stage | Primary | If the primary is unavailable | If no candidate qualifies | Never allowed |
+| --- | --- | --- | --- | --- |
+| G0 to G1 discovery | Eligible research candidate with a G0 grant | Next eligible candidate; reassign remaining work only | Read-only notes outside protected paths; report `UNKNOWN` | Source or code writes without a grant |
+| G2 spec | Eligible spec-writing candidate whose principal the role map recognizes, with an issue-specific delegation | Next eligible candidate with the same recognition and delegation | Draft-only output for Ky to submit through the owner route; report `BLOCKED` for publication | Publishing under `specs/` from an unrecognized principal; a coder spoofing Kiro or Ky; merge |
+| G3 scenarios | Eligible scenario-authoring candidate | Next eligible candidate | Draft-only; report `PENDING` | Writing executable tests in the same grant |
+| G4 tests, RED | Eligible test-synthesis candidate | Next eligible candidate | HOLD | Production code under the same grant; vacuous or mock-set RED |
+| G5 implementation | Eligible coding candidate on allowlisted paths | Next eligible candidate; new claim and new fencing token | HOLD | Editing the accepted spec or tests; self-review |
+| G6 verification | Eligible reviewer, a distinct authenticated principal from the coder, preferably a different model family and execution context | Next distinct eligible reviewer | HOLD, or `INDEPENDENCE_LIMITED` recorded with reason and left for Ky to accept | Same principal or same session as reviewer; merge; deploy |
+| Owner decisions (approval, merge, deploy, spend) | Ky | None | Wait for Ky | Any AI fallback |
+
+A reassignment carries the original issue, revision, accepted artifact hashes, verified completed artifacts, remaining work, human decisions and attempt evidence (CONT-04). A recovered provider joins the pool for the next task and does not take the current one (CONT-10-R1).
+
+## Evaluating candidates without launching models in this spec
+
+CONT-14 needs stage-specific fixtures. This amendment authorizes no evaluation run, model launch or spend. It defines only what a later, separately authorized task must record:
+
+| Stage | What the fixture must be able to tell apart |
+| --- | --- |
+| G0 to G1 | Source-backed rules and counterexamples from unsupported claims |
+| G2 | EARS form, stable IDs, source fidelity, traceability to tasks |
+| G3 | Scenarios that map to requirement IDs and include invalid-authorization cases |
+| G4 | Genuine assertion failure from harness, import or collection failure; vacuous assertions |
+| G5 | Bounded change on allowed paths; regression rate; no edits to spec or tests |
+| G6 | Reproduced changed tests on the exact revision; adversarial and security findings; independence from the coder |
+
+Each fixture has positive cases and counterexample cases. Public coding leaderboards may help someone shortlist candidates to evaluate. They do not count as a stage result.
+
+## Interaction with other specs and records
+
+- **ESE spec (#238).** Stage gates, receipts and the owner-only channel stay in ESE. R1 adds no approval semantics. The reviewer-independence, assignment-recording and principal-binding requirements are in the companion ESE amendment. This spec's CONT-15 at G6 states only the minimum (a distinct authenticated principal) so it stands alone until the ESE amendment is adopted.
+- **AIV spec.** Token issue, TTL and revocation stay in AIV. R1 reads them and does not redefine them.
+- **ROLES and `roles.yml`.** R1 edits neither. Role-map wording that names one spec author is a protected change that needs Ky's separate exact request. The proposed wording is prepared as text for that request and is not applied.
+- **Relay #11.** The deployed relay is Kiro-only (original design, "Cloud integration and conditional authorship"). R1 does not change it and does not start a second router. An adapter over eligible providers waits for the relay source to be versioned and its owner verified.
+- **#229 coordination hub.** A separate open intake about cloud-resource state. R1 neither depends on it nor implements any part of it.
+
+## Failure modes and rollback
+
+| Failure | Behavior |
+| --- | --- |
+| Registry missing, malformed or unreadable | Fail closed. No candidate is eligible. Report `UNKNOWN`. Manual owner route stays available. |
+| Evaluation evidence stale, absent, or missing run ID or input SHA | The candidate is ineligible for that stage. |
+| Registry and AIV record disagree | Report `ROLE_CONFLICT`. Do not dispatch the affected agent until Ky resolves it. |
+| Selector and grant disagree | The grant wins for authorization. The selector result never expands it. |
+| Reassignment races with a late writer | The claim store's fencing token rejects the late write (CONT-08-R1). |
+| An always-deny implementation | Fails the positive controls S1 and S2. Zero unauthorized effects alone is not acceptance. |
+
+Rollback for any later implementation: stop new automated claims, revoke stale owners, preserve receipts and uncertain effects, and return to the existing manual draft mode. Never roll back by replaying a possibly completed request or clearing evidence. Reverting the spec itself is Ky's revert of the merge.
+
+## Alternatives considered
+
+| Option | What it gives | Why not chosen as the default |
+| --- | --- | --- |
+| Static ordered list, for example Kiro, then Codex, then others | Simple, predictable | Recreates a permanent vendor ordering under a new name. Fails when the listed candidate is wrong for a stage, and nothing records why it is eligible. |
+| Ky picks a performer by hand every time | Works today. No new mechanism. Keeps the owner decision explicit. | Does not scale across stages and tasks. It stays the default wherever thresholds are unset (CONT-14). |
+| Capability-qualified selection with stage evidence (R1) | Per-task choice backed by evidence. Replacement needs no enforcement-code change. | Needs a registry, evaluation fixtures and adopted thresholds. Until those exist it behaves like the manual option. |
+| A leaderboard-ranked choice | Cheap | A coding leaderboard does not measure scenario writing, false-RED rate or independent verification. Excluded by CONT-14. |
+
+R1 selects the third option and keeps the second as the working default until its prerequisites exist.
+
+## Observations that conflict, kept as found
+
+The 2026-11-12 report says Kiro was out of credits. A Kiro session responded on 2026-11-25. This design relies on neither: the continuity contract works whether Kiro is available or not, and CONT-02-R1 keeps an unverified availability claim from moving routing state.
