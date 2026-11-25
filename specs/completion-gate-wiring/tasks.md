@@ -15,14 +15,15 @@ No code is written for these tasks until Ky merges this spec.
   workflow, which AGENTS rule 7 protects; Ky's 2026-11-11 instruction is the explicit request, and Ky merges.
   Depends on: T1, T2.
   Done: #274 (advisory). Regression (verified observation, Ky's audit 2026-11-24, main 6c667f4): the advisory
-  step regressed on main after #233 (commit 6c667f4); it is repaired by T9.
+  step regressed on main after #233 (commit 6c667f4); it was repaired in #309 (T9, merged 2026-11-25).
 - [x] **T4. Agent rule in `AGENTS.governance.md`** (CGW-4.1–4.2). Governance-section PR with the exact rule text.
   Rule 7 applies as in T3. Depends on: T1.
   Done: #272 (also fixed optin.sh duplicating rules on refresh).
 - [ ] **T5. User-level rule install on Ky's machine** (CGW-4.3–4.4). Local, not a PR. First confirm the
   Unknowns (Antigravity rule file, Kiro global steering location). Then insert the marked block into each
   confirmed file and report the files skipped. Depends on: T4 merged, so the text is final.
-  Status: open for Codex only (loading unconfirmed); Gemini, Kiro and Cursor are done.
+  Status: open verification, not done: block installed in the files below, but loading is unconfirmed for Codex,
+  Antigravity and Cursor.
   Original note (2026-11-11, historical): installed in ~/.codex/AGENTS.md, ~/.gemini/GEMINI.md,
   ~/.kiro/steering/completion-gate.md, ~/.cursor/rules/completion-gate.mdc (marked blocks; originals in
   ~/.local/share/cgw-t5-backup/). Skipped: ~/.claude/CLAUDE.md (absent, CGW-4.4). Kiro load confirmed in a live
@@ -35,29 +36,37 @@ No code is written for these tasks until Ky merges this spec.
   Update (verified observation, 2026-11-24): `~/.codex/AGENTS.md` was recreated with the marked block only,
   byte-identical to the block in `~/.gemini/GEMINI.md`. The pre-install original is not restored; it remains in
   the backup at `~/.local/share/cgw-t5-backup/20261111T221424/`.
-  Still open: Codex loading is NOT confirmed. Confirm it with a fresh Codex session asked to quote its
-  completion-gate rule, and record the result here only after that check.
+  Restored block (2026-11-24) stays as written. Still open: loading is NOT confirmed for Codex, Antigravity or
+  Cursor, and the Kiro Stop hook's live output is unconfirmed. Confirm each with a fresh session asked to quote
+  its completion-gate rule, and record the result here only after that check.
 - [x] **T6. Kiro Stop hook** (CGW-5.1–5.4). Local hook plus README entry listing rule-only agents. Depends on: T1, T5.
   Done: script #275; installed as ~/.kiro/hooks/completion-gate-stop.json (copied from main da60770); an end-to-end run on main printed VERIFIED. Kiro showing the hook's output in a live session is not yet confirmed.
 - [x] **T7. README limits** (CGW-6.1). Can ride with T1 or T6.
   Done with T1 (#271) and T6 (#275).
-- [ ] **T9. Repair the broken verdict step** (CGW-3.4). Code PR to `.github/workflows/governance.yml` and
-  `tests/test_completion_step.py`, from branch `fix/verdict-step-merge-defect`. Restore the advisory step so the
-  verdict step passes `bash -n` and the 9 failing tests in `tests/test_completion_step.py` pass. This touches a
-  governance workflow, which AGENTS rule 7 protects; Ky merges. Depends on: nothing.
-  Evidence (verified observation, Ky's audit 2026-11-24, main 6c667f4): #233 (commit 6c667f4) left an unclosed
-  `if` in the verdict step; `bash -n` fails; 9 tests in `tests/test_completion_step.py` fail on main; the CGW
-  completion gate returns FAILED on CHK-CGW-3 (contract_hash
+- [x] **T9. Repair the broken verdict step** (CGW-3.4). Code PR to `.github/workflows/governance.yml` and
+  `tests/test_completion_step.py`. Restore the advisory step so the verdict step passes `bash -n` and the 9
+  failing tests in `tests/test_completion_step.py` pass. This touches a governance workflow, which AGENTS rule 7
+  protects; Ky merges. Depends on: nothing.
+  Done: #309 (merge commit 2b480c0ce9852c92a45dd00a4184edd08449ca2f, 2026-11-25).
+  Evidence before the fix (verified observation, Ky's audit 2026-11-24, main 6c667f4): #233 (commit 6c667f4) left
+  an unclosed `if` in the verdict step; `bash -n` fails; 9 tests in `tests/test_completion_step.py` fail on main;
+  the CGW completion gate returns FAILED on CHK-CGW-3 (contract_hash
   sha256:053ec81b13e8ba75f6423729e5d3aad059aaba67ecde450aeb84f16db9c2e829).
-  Status (verified observation, 2026-11-24): NOT done. Code PR https://github.com/KyPython/ai-governance/pull/304
-  is open and not merged; its commit is 88d600e. Its own CI is red: `ai-governance / quality` and `system-quality`
-  fail on 3 tests that also fail on origin/main (`test_policy.py::SpecGate::test_GATE_1_2_kiro_spec_dir_on_base_passes`,
-  `test_sweep.py::SweepWorkflow::test_GBD_3_1_failed_sweep_opens_one_issue` and
-  `test_sweep.py::SweepWorkflow::..._updates_the_open_issue_instead_of_duplicating`). The verdict job is red
-  because quality is red. Mark this task done only after #304 merges.
+  How it merged (verified 2026-11-25): #309 combined three fixes because no single PR could pass the required
+  `ai-governance / verdict` check alone: the verdict step broken by #233, `sweep.yml` broken by #263, and
+  requirements pins dropped by #259. It also added `tests/test_workflow_shell_syntax.py`. The earlier attempts
+  #304, #307 and #308 were closed as superseded.
+  Observation (verified 2026-11-25, main at 2b480c0): `python3 completion-gate/completion_gate.py
+  specs/completion-gate-wiring/completion-contract.json --evidence /tmp/cgw-main-ev/evidence.json` printed
+  `VERIFIED /tmp/cgw-main-ev/evidence.json` with contract hash
+  sha256:053ec81b13e8ba75f6423729e5d3aad059aaba67ecde450aeb84f16db9c2e829; CHK-CGW-1 to CHK-CGW-5 all exited 0.
+  Before #309 the same run was FAILED on CHK-CGW-3. This is a dated observation, not a claim that the issue is
+  complete: T5 and T8 remain open.
 - [ ] **T8. Rollout (Ky only).** Ky bumps callers' pinned SHA repo by repo, watches advisory results, and later
   merges the separate PR that flips the default to `required` (CGW-3.7, 6.2). No agent does this task.
-  Do not bump any caller to `main` until T9 merges. `c2b9fc3` is a known-good candidate pin.
+  T9 is merged (#309, 2026-11-25). A caller pin at 2b480c0 includes the repaired verdict step (verified by the
+  completion gate and by CI on #309). `c2b9fc3` remains a known-good older pin that includes T3. The pin decision
+  is Ky's; this task stays open.
   Input, unconfirmed (from Ky's audit 2026-11-24; not re-verified by the spec author):
   - pinned `bacf04c` (before T3): KyPython/KyPython, repo-starter, odin-tasks, odin-recording-preparation,
     skills-hello-github-actions, claim-checker `local/`.
