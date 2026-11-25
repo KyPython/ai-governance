@@ -300,6 +300,79 @@ Source: [C-V] "V6 POSITIVE"; [DOC] falsification case 6 positive control; invari
 
 ---
 
+<!-- KIRO-AUTHORED AMENDMENT (R1) — HUMAN ADOPTION/MERGE PENDING. RUNTIME ACCEPTANCE NOT RUN.
+Issue: https://github.com/KyPython/ai-governance/issues/238 (OPEN) · companion: #219 and `specs/kiro-credit-failover` Revision R1.
+Source: KyPython/ai-governance@53462a0 (origin/main at read time, 2026-11-25). Owner request: #219 comment 6600237280 (2026-11-03, DESIGN DRAFT, NO EXECUTION AUTHORITY) and #238 comment 6844321931 (2026-11-12).
+Author: Kiro (spec-author role), local Kiro CLI session 2026-11-25; exact model ID not exposed. Not an owner receipt, not an approval, not a role-map change.
+ESE-1 through ESE-14 above are unchanged, including ESE-2.1 to ESE-2.5. R1 adds ESE-15 to ESE-17 and does not lower the approval bar. -->
+
+---
+
+## Amendment R1: capability-qualified assignment, independence, and binding (ESE-15 to ESE-17)
+
+R1 answers the owner's request that no tool or vendor be a permanent appointee of any lifecycle role. The stage gates G0 to G6 and the owner approval bar in ESE-1 and ESE-2 do not change. R1 changes how the performer of a stage is chosen and recorded, and it makes explicit that independence and identity binding are judged on authenticated principals and execution context, not on vendor labels.
+
+Evidence states for R1 (sources named; conflicts kept):
+- VERIFIED GOVERNING RULE: `roles.yml` lists `kiro-agent[bot]` and `KyPython` as `spec-author` ("Only Kiro, with Ky as owner override") and lists coders by vendor. `AGENTS.governance.md` rule 2 names Kiro as the only spec author. Both are protected.
+- VERIFIED CURRENT OBSERVATION: the merged AIV registry (`registry/agents.json`) records a pilot pair, `antigravity` as `author` and `kiro` as `reviewer`.
+- VERIFIED CURRENT OBSERVATION: B1 (an owner-only, non-agent-forgeable approval channel) is not demonstrated. The iPhone signer is a proposal, not an implemented or verified channel.
+- HISTORICAL EVIDENCE: the 2026-11-03 #238 comment proposes Cursor as a distinct T1 reviewer "subject to real access/independence verification". That is a planning answer, not an authorization, and ESE-15 withdraws it as a permanent appointment.
+- UNKNOWN: evaluation thresholds, the candidate list, and the registry home. They are set by Ky and tracked in `specs/kiro-credit-failover` (CONT-13, CONT-14).
+
+### Requirement 15: Capability-qualified lifecycle assignment (ESE-15)
+
+**User Story:** As Ky, I want each task's coder, test author, spec writer and reviewer chosen per task from evidence, so that exhaustion or retirement of one provider never stops a stage and no tool holds a role permanently.
+
+Source: #219 comment 6600237280 ("fixed gates, dynamic providers"); #238 comment 6844321931; CONT-13 to CONT-15 in `specs/kiro-credit-failover`.
+
+#### Acceptance Criteria
+1. ESE-15.1 The system SHALL NOT treat any named provider, product, model, harness or IDE as the permanent sole eligible performer of any G0 to G6 stage or of the spec-author, test-author, coder or reviewer role. (Source: #219 comment 6600237280.)
+2. ESE-15.2 WHEN a task is authorized THEN the stage grant SHALL record, for each phase of that task, the stage, the capability class, the candidate (provider, model identifier or family and version, harness, environment) and the authenticated principal that will act. (Source: #219 comment; ESE-6.1 receipt fields.)
+3. ESE-15.3 The selector SHALL NOT be an approver. A candidate's eligibility, a registry entry or a selection result SHALL NOT, by itself, authorize any stage, and ESE-1 and ESE-2 SHALL apply unchanged to every candidate. (Source: #219 comment "The selector is never an approver"; ESE-1.9, ESE-2.3.)
+4. ESE-15.4 WHEN a candidate is withdrawn, exhausted or replaced THEN the same G0 to G6 stage contract SHALL apply to the replacement, only the remaining work SHALL be reassigned, and accepted artifacts and receipts SHALL keep their lineage (ESE-6.4). Replacement SHALL NOT require editing enforcement code. (Source: #219 comment falsification item 2.)
+5. ESE-15.5 IF no candidate qualifies for a stage THEN the system SHALL report HOLD with reason `NO_QUALIFYING_CANDIDATE`, SHALL permit only read-only or draft-only output outside protected paths, and SHALL NOT let any actor assume another actor's identity or role. (Source: #219 comment "No qualifying candidate or missing authority".)
+6. ESE-15.6 The system SHALL treat spec-author as an authorized role and not as a single product. Publication under `specs/` SHALL require both that the publishing identity is recognized in the owner-approved role map and that an issue-specific delegation and scope is recorded. Until Ky changes the role map by a separate, exact, protected-file request (ESE-13.4), output from an unrecognized identity SHALL remain an attributed draft outside Git. (Source: #238 comment 6844321931 items 1 and 2; ESE-13.4.)
+
+**Evidence/test method:** replace a candidate by a registry change and run the same stage contract (S2 in `specs/kiro-credit-failover/scenarios.md`); attempt a publish from an unrecognized identity and read back the repository. Deferred to implementation.
+**Dependencies:** ESE-1, ESE-2, ESE-6, ESE-13.4; CONT-13 to CONT-15.
+
+---
+
+### Requirement 16: Author and reviewer independence (ESE-16)
+
+**User Story:** As Ky, I want the reviewer of a change to be a different actor in a different context from the coder, so that a vendor label or a re-run of the same session cannot pass for independent verification.
+
+Source: #219 comment (G6 row, "reviewer != coder"); ROLES (reviewer is a different coder); ESE-14.1; ESE-8.
+
+#### Acceptance Criteria
+1. ESE-16.1 The reviewer of a task SHALL be an authenticated principal distinct from the principal that authored the tests or code under review. The same session, a second session with the same principal and execution context, or the same actor relabeled SHALL NOT satisfy this. (Source: ROLES; #219 comment.)
+2. ESE-16.2 WHERE a reviewer in a different underlying model family and a different execution context is available, the system SHALL record that fact. WHERE only a distinct principal in the same model family is available, the system SHALL record `INDEPENDENCE_LIMITED` with the reason and SHALL leave acceptance of that limit to Ky. WHERE no distinct principal exists, the system SHALL HOLD. (Source: #219 comment "preferably a different underlying model family and execution context".)
+3. ESE-16.3 Independence SHALL be judged on authenticated principal and observed execution context, not on a vendor label, a free-text model name, or a Git author field. (Source: ESE-2.4; #219 comment.)
+4. ESE-16.4 A test author at G4 SHALL NOT implement production code at G5 under the same stage grant, and a coder SHALL NOT rewrite the accepted spec or tests without a new authorized phase. (Source: #219 comment "Separation"; ESE-10.1, ESE-1.5.)
+5. ESE-16.5 A reviewer SHALL NOT merge, enable auto-merge, or deploy. (Source: AGENTS rules 1 and 12; ESE-1.7.)
+
+**Evidence/test method:** V2 and V6 controls with a coder, a same-session reviewer, a distinct-principal reviewer and a different-family reviewer. Deferred to implementation.
+**Dependencies:** ESE-2, ESE-10, ESE-14.
+
+---
+
+### Requirement 17: Identity, session and scope binding (ESE-17)
+
+**User Story:** As Ky, I want every grant tied to one authenticated principal, one execution context and one exact subject, so that a grant cannot be used by another actor or replayed on another repository, spec or stage.
+
+Source: #219 comment (layers 4 and 5); ESE-2, ESE-6, ESE-13.
+
+#### Acceptance Criteria
+1. ESE-17.1 A stage grant SHALL bind the authenticated principal, the execution context or session identifier, the repository, the issue, the spec SHA, the stage, the permitted paths and operations, the expiry, and the budget. Use by a different principal or context, or on a different subject, SHALL be rejected at dispatch and again immediately before publication. (Source: #219 comment layer 5; ESE-6.3.)
+2. ESE-17.2 A free-text model name, a Git author or committer field, a shared-token appearance as `KyPython`, an issue or PR comment, and a verified commit alone SHALL NOT establish the authenticated principal. (Source: ESE-2.1, ESE-2.4, ESE-2.5; ROLES limit.)
+3. ESE-17.3 WHILE no independent owner-only signing channel with trusted verification has been demonstrated by observed execution evidence, every stage that requires an owner decision SHALL report BLOCKED with reason `UNVERIFIABLE_APPROVER` (B1). A chat message, a GitHub comment, or an agent signature alone SHALL NOT end that state. This criterion restates ESE-2.2 for the assignment surface and SHALL NOT be read as changing it. (Source: ESE-2.2; #219 comment layer 5.)
+4. ESE-17.4 WHEN a registry entry is retired or a grant is revoked or expires THEN the system SHALL reject further dispatch and publication for that candidate and subject, and a selector rerun SHALL NOT recreate the authority. (Source: ESE-6.3, ESE-13.1; CONT-11-R1.)
+
+**Evidence/test method:** wrong-repo, wrong-SHA, wrong-stage, wrong-principal, expired and revoked grants, plus model-name spoofing, each read back at the dispatch and publisher boundaries. Deferred to implementation.
+**Dependencies:** ESE-2, ESE-6, ESE-13.
+
+---
+
 ## Global definition of done (from [DOC])
 An independently reproduced per-account, per-repository, per-provider, and local/cloud coverage report shows every owned writable scope either genuinely enforced or explicitly quarantined and unable to publish; new governed creation has a successful positive control; and bypass attempts fail for the right reason. If some GitHub/OS/admin surface cannot be controlled at the current plan or privilege level, the correct report is **GLOBAL INVARIANT NOT ENFORCED**, never a false 100% coverage claim. Kiro owns the specification; only owner-approved merged policy changes and independent verification can advance operational status. (Source [DOC] "Definition of DONE (global)".)
 
