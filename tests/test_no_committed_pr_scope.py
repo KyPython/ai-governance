@@ -1,6 +1,10 @@
 """A `.pr-scope` file must not be committed to the repository root.
 
-Spec: specs/ai-governance-gate (GATE-1.5: the closest criterion; no spec here covers the diff-hygiene manifest).
+Spec: specs/pr-scope-manifest
+- PRS-1.1: the default branch has no tracked `.pr-scope` at the repository root.
+- PRS-2.1: the test fails when it is tracked, and the failure message names the file and cites PRS-1.1.
+- PRS-2.2: the decision uses `git ls-files` (tracked state), not working-tree existence.
+- PRS-2.3: the test name and this header cite PRS-1.1.
 The diff-hygiene script reads its manifest from a committed `.pr-scope` first and only then from the PR body's
 `## Files touched` section. A stale committed file therefore overrides the manifest every later PR declares.
 """
@@ -21,16 +25,16 @@ def tracked_files():
 
 
 class NoCommittedPrScope(unittest.TestCase):
-    def test_GATE_1_5_pr_scope_is_not_tracked_in_repo_root(self):
-        """GATE-1.5: `.pr-scope` is counted as code and must not linger; declare the manifest in the PR body."""
+    def test_PRS_1_1_pr_scope_is_not_tracked_in_repo_root(self):
+        """PRS-1.1 / PRS-2.1 / PRS-2.2: `.pr-scope` must not be tracked; declare the manifest in the PR body."""
         files = tracked_files()
         if files is None:
             self.skipTest("not a git checkout")
         self.assertNotIn(
             ".pr-scope",
             files,
-            "`.pr-scope` is committed in the repo root. It overrides every PR's manifest in the diff-hygiene "
-            "script. Delete it and declare the manifest in the PR body's `## Files touched` section instead.",
+            "PRS-1.1 violated: `.pr-scope` is committed in the repo root. It overrides every PR's manifest "
+            "in the diff-hygiene script. Delete it and declare the manifest in the PR body's `## Files touched` section instead.",
         )
 
 
