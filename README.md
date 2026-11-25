@@ -76,7 +76,9 @@ result as success **and** names the validation job in **prerequisite-check**.
 The verdict then reads that job's check run for the exact PR head SHA through
 the API and requires it to be completed, success and from github-actions. A
 hardcoded success string, a skipped job, a run on another SHA, or an API error
-fails closed. The caller must grant **checks: read**. The caller still picks the
+fails closed. Every caller, whatever **run-quality** is, must grant
+**checks: read** on the job that calls the reusable workflow; without it the run
+fails at startup. Add the grant before moving the pin. The caller still picks the
 check name, so review the required-check binding; a standalone optional check is
 insufficient.
 

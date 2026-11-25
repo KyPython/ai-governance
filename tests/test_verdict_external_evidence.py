@@ -180,6 +180,12 @@ class Verdict(unittest.TestCase):
         spec = doc[True]["workflow_call"]["inputs"]["prerequisite-check"]
         self.assertEqual((spec["type"], spec.get("default")), ("string", ""))
 
+    def test_SECFC_7_8_in_repo_caller_and_template_grant_checks_read(self):
+        for rel in (".github/workflows/self-test.yml", "templates/ai-governance.yml"):
+            with self.subTest(caller=rel):
+                doc = yaml.safe_load((ROOT / rel).read_text(encoding="utf-8"))
+                self.assertEqual(doc["jobs"]["ai-governance"].get("permissions"), {"contents": "read", "checks": "read"})
+
     def test_SECFC_7_9_verdict_step_is_valid_shell(self):
         r = subprocess.run(["bash", "-n"], input=verdict_script() + "\n", capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 0, r.stderr)
