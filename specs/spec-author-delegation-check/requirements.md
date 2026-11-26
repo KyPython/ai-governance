@@ -160,9 +160,9 @@ Source: ESE-9 to ESE-14 method; CONT-12-R1.
 
 | Requirement | Scenarios in `scenarios.md` | Tasks in `tasks.md` |
 | --- | --- | --- |
-| SAD-1 | P1, P2, P3, A1, A8, A9 | T1, T2, T3, T4 |
-| SAD-2 | P1, A2, A3, A4, A5, A6, A10, A15 | T1, T2, T3, T4 |
-| SAD-3 | A1 to A7, A11 | T2, T3 |
-| SAD-4 | A12, A13 | T2, T3, T5 |
+| SAD-1 | P1, P2, P3, A1, A8, A9 | T1, T3, T4 |
+| SAD-2 | P1, A2, A3, A4, A5, A6, A10, A15 | T1, T3, T4 |
+| SAD-3 | A1 to A7, A11 | T3, T4 |
+| SAD-4 | A12, A13 | T3, T5 |
 | SAD-5 | P2, P3, A10, A14 | T1, T3, T4, T6 |
-| SAD-6 | all | T2, T3, T6 |
+| SAD-6 | all | T2, T3, T4, T5, T6 |
