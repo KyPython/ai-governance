@@ -26,6 +26,10 @@ jobs:
         run: python -B -m unittest discover -s tests -p 'test_quality_step.py' -v
 
   ai-governance:
+    # SECFC-7.8: the reusable verdict job reads check runs; a called workflow cannot exceed this grant.
+    permissions:
+      contents: read
+      checks: read
     uses: ./.github/workflows/governance.yml
     with:
       require-tests: false

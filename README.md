@@ -72,9 +72,15 @@ For external stack jobs, pass their actual needs result through
 the reusable workflow's **prerequisite-result** input under an always-run
 caller. The default is empty. In-workflow quality does not need it.
 **run-quality: false** passes only when the caller passes the actual needs
-result and that result is success. A literal success string is still accepted
-by the syntax; callers must pass the needs expression, not a hardcoded success.
-Review the required-check binding; a standalone optional check is insufficient.
+result as success **and** names the validation job in **prerequisite-check**.
+The verdict then reads that job's check run for the exact PR head SHA through
+the API and requires it to be completed, success and from github-actions. A
+hardcoded success string, a skipped job, a run on another SHA, or an API error
+fails closed. Every caller, whatever **run-quality** is, must grant
+**checks: read** on the job that calls the reusable workflow; without it the run
+fails at startup. Add the grant before moving the pin. The caller still picks the
+check name, so review the required-check binding; a standalone optional check is
+insufficient.
 
 ### Roles and the spec gate (no spec, no code)
 
@@ -196,7 +202,7 @@ The scorecard only reports; the pass/fail decision never reads it. Use it to see
 
 ### Inputs
 
-`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off"), `prerequisite-result` ("").
+`node-version` ("22"), `python-version` ("3.12"), `working-directory` ("."), `run-quality` (true; set false only when the repo's own required CI already runs install/lint/test/build on every PR), `workflow-baseline` ("changed" = only workflows touched by the PR/push must be pinned and permissioned; "all"; "off"), `require-tests` (true), `extra-command` (""), `require-issue-reference` (false; code PRs always need it), `enforce-conventional-title` (true), `systems-thinking-contract` ("auto" | "required" | "off"), `prerequisite-result` (""), `prerequisite-check` ("").
 
 ## Opt a repo in
 
