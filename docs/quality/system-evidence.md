@@ -86,18 +86,20 @@ a recoverable backup, a load test or a customer-outcome benchmark.
 
 An external validation job must run the actual stack checks and this composite
 action. A caller can then use the authoritative reusable governance workflow
-with **needs: validate**, **if: always()**, **run-quality: false**, and
-**prerequisite-result** set to the actual needs.validate.result expression.
-**run-quality: false** passes only when the caller passes that actual needs
-result and the result is exact success. Empty, failure, skipped, cancelled, and
-wrong-case values fail the verdict. The existing policy and secret-scan jobs
-still run.
+with **needs: validate**, **if: always()**, **run-quality: false**,
+**prerequisite-result** set to the actual needs.validate.result expression, and
+**prerequisite-check** set to the validation job's check name. The caller grants
+**checks: read**. **run-quality: false** passes only when that result is exact
+success and the verdict finds a completed, successful github-actions check run
+of that name on the exact PR head SHA through the API. Empty, failure, skipped,
+cancelled, wrong-case values, a missing or stale-SHA run, and an API error fail
+the verdict. The existing policy and secret-scan jobs still run.
 
 The **prerequisite-result** default is empty. In-workflow quality does not need
 it: an empty value or exact success is acceptable, and any other value fails.
-A literal success string is still accepted by the syntax; callers must pass the
-needs expression, not a hardcoded success. The input's presence alone does not
-prove another job ran. Review the actual needs binding, required-check identity
+A literal success string no longer passes on its own: the verdict also needs the
+API evidence above. The caller still chooses the check name, so a job that tests
+nothing would pass. Review the actual needs binding, required-check identity
 and pinned workflow source. Do not substitute a lookalike verdict name or a
 dependency whose skip is treated as a successful required check. Consumers must
 verify their own required contexts.
