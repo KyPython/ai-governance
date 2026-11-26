@@ -100,10 +100,13 @@ class VerdictControls(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertIn("verdict=pass",output)
 
-    def test_explicit_legacy_external_quality_can_still_skip(self):
+    def test_SECFC_7_1_external_quality_success_string_alone_no_longer_passes(self):
+        # Replaces test_explicit_legacy_external_quality_can_still_skip, which asserted that a bare
+        # prerequisite-result of success passed. SECFC-7.1 forbids that; the passing case with API
+        # evidence is covered in tests/test_verdict_external_evidence.py.
         result,output=self.verdict(quality="skipped",run_quality="false",prerequisite="success")
-        self.assertEqual(result.returncode,0,result.stderr)
-        self.assertIn("verdict=pass",output)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn("verdict=fail",output)
 
     def test_run_quality_false_with_empty_prerequisite_fails(self):
         result,output=self.verdict(quality="skipped",run_quality="false",prerequisite="")

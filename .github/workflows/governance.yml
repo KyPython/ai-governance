@@ -80,7 +80,16 @@ on:
         description: >
           Actual needs result of an external required validation job. Default is empty.
           In-workflow quality accepts empty or exact success. With run-quality false, only
-          exact success from the caller's needs expression passes.
+          exact success from the caller's needs expression passes, and only together with the
+          check-run evidence named by prerequisite-check (SECFC-7).
+        type: string
+        default: ""
+      prerequisite-check:
+        description: >
+          Name of the external required validation check run (for example the job name). With
+          run-quality false the verdict passes only when the latest run of this name on the PR head
+          SHA is completed, success and from github-actions (SECFC-7). Callers must grant
+          checks: read. Default is empty, which fails when run-quality is false.
         type: string
         default: ""
       completion-gate:
@@ -1276,7 +1285,8 @@ jobs:
     needs: [quality, policy, security, secret-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions: {}
+    permissions:
+      checks: read
     outputs:
       verdict: ${{ steps.v.outputs.verdict }}
       summary: ${{ steps.card.outputs.summary }}
@@ -1362,6 +1372,9 @@ jobs:
           RUN_QUALITY: ${{ inputs.run-quality }}
           SYSTEM_QUALITY_DEFINITION: ${{ inputs.system-quality-definition }}
           PREREQUISITE_RESULT: ${{ inputs.prerequisite-result }}
+          PREREQUISITE_CHECK: ${{ inputs.prerequisite-check }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           COMPLETION_MODE: ${{ inputs.completion-gate }}
           COMPLETION_STATUS: ${{ needs.quality.outputs.completion_status }}
@@ -1388,7 +1401,56 @@ jobs:
           fi
           prerequisite_ok=false
           if [ "$RUN_QUALITY" = "false" ]; then
-            if [ "$PREREQUISITE_RESULT" = "success" ]; then
+            # SECFC-7: a caller-typed success is not proof. Require a completed, successful github-actions
+            # check run of the named job on the exact PR head SHA, read from the API. Every failure path fails closed.
+            if [ "$PREREQUISITE_RESULT" != "success" ]; then
+              echo "::error::prerequisite-result must be exactly success when run-quality is false (got '${PREREQUISITE_RESULT}')."
+            elif [ -z "$PREREQUISITE_CHECK" ]; then
+              echo "::error::prerequisite-check is required when run-quality is false (SECFC-7.2)."
+            elif [ "$PREREQUISITE_CHECK" = "ai-governance / verdict" ]; then
+              echo "::error::prerequisite-check must not name the verdict itself (SECFC-7.6)."
+            elif ! printf '%s' "$HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::head SHA is missing or malformed; not querying the API (SECFC-7.3)."
+            elif ! runs=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?per_page=100"); then
+              echo "::error::could not read check runs for ${HEAD_SHA}; failing closed (SECFC-7.5). The caller needs checks: read."
+            elif ! printf '%s' "$runs" | python3 -c '
+          import json, os, sys
+          text = sys.stdin.read()
+          decoder = json.JSONDecoder()
+          pos, runs, total = 0, [], 0
+          try:
+              while True:
+                  while pos < len(text) and text[pos].isspace():
+                      pos += 1
+                  if pos >= len(text):
+                      break
+                  page, pos = decoder.raw_decode(text, pos)
+                  runs += page["check_runs"]
+                  total = max(total, int(page["total_count"]))
+          except Exception as exc:
+              print("unparseable check-runs response: " + str(exc))
+              sys.exit(1)
+          if len(runs) < total:
+              print("incomplete check-runs response: " + str(len(runs)) + " of " + str(total))
+              sys.exit(1)
+          name, sha = os.environ["PREREQUISITE_CHECK"], os.environ["HEAD_SHA"]
+          match = [r for r in runs if r.get("name") == name and r.get("head_sha") == sha]
+          if not match:
+              print("no check run named " + repr(name) + " on " + sha)
+              sys.exit(1)
+          if any(r.get("status") != "completed" or not r.get("completed_at") for r in match):
+              print("a check run named " + repr(name) + " is not completed")
+              sys.exit(1)
+          latest = max(r["completed_at"] for r in match)
+          top = [r for r in match if r["completed_at"] == latest]
+          bad = [r for r in top if r.get("conclusion") != "success" or (r.get("app") or {}).get("slug") != "github-actions"]
+          if bad:
+              print("latest check run named " + repr(name) + " is not a github-actions success")
+              sys.exit(1)
+          print("validated check run " + repr(name) + " on " + sha)
+          '; then
+              echo "::error::external validation evidence for ${PREREQUISITE_CHECK} on ${HEAD_SHA} was not a successful github-actions check run (SECFC-7.4)."
+            else
               prerequisite_ok=true
             fi
           elif [ -z "$PREREQUISITE_RESULT" ] || [ "$PREREQUISITE_RESULT" = "success" ]; then
