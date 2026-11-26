@@ -28,9 +28,10 @@ for each spec folder F touched by the PR:
         if no record:                               fail NO_DELEGATION
         if record.revoked:                          fail DELEGATION_REVOKED
         if record.expires <= now:                   fail DELEGATION_EXPIRED
+        if introduced_on_main(record) >= pr.created_at: fail DELEGATION_AFTER_PR_OPENED
 ```
 
-Other named reasons come from comparing which field differs. Any read, parse or schema error fails with `DELEGATION_UNREADABLE`. Records are read from `main` only, so a record added by the PR under review is not in the set (SAD-2.5).
+Other named reasons come from comparing which field differs. Any read, parse or schema error fails with `DELEGATION_UNREADABLE`. Records are read from `main` only, so a record added by the PR under review is not in the set. Reading the current `main` is not enough on its own: a record merged after the PR opened would appear on a re-run. So the check also finds the commit that introduced the matching record on `main`'s first-parent history and requires its commit time to be earlier than the PR's creation time, which it reads from the GitHub API. Expiry and revocation are still read from the current `main` (SAD-2.5).
 
 The "issue" that the pull request is for comes from the PR body's existing `Relates to #N` or `Closes #N` reference, which the policy job already parses (GATE-1.1). A pull request with no issue reference matches no record. The spec folder comes from the changed paths under the spec paths read from `roles.yml`.
 
@@ -48,7 +49,7 @@ A record is data with these fields. The format and file name are UNKNOWN until K
 | `revoked` | `false` or `true`. Revocation is a merged edit that sets it, or removes the record |
 | `note` | Free text for the owner. Not read by the check |
 
-Designation (standing or delegation-required) is a per-identity field in the owner-controlled role map or the delegation file. An identity with no designation is treated as delegation-required (SAD-1.4).
+Designation (standing or delegation-required) is a per-identity field in the owner-controlled role map or the delegation file. The change that ships the check records `kiro-agent[bot]` and `KyPython` explicitly as standing (SAD-5.2). Any other identity with no designation is treated as delegation-required (SAD-1.4).
 
 ## Where the record lives (alternatives)
 

@@ -27,6 +27,14 @@ Feature: Delegated spec publication
     And Base holds no delegation for S
     When S opens a spec-only pull request that changes files under F
     Then the policy job passes the role gate as it does today
+
+  @SAD-1.4 @SAD-5.2
+  Scenario: P3 Listed spec authors are explicitly standing when the check ships
+    Given the check has shipped with kiro-agent[bot] and KyPython recorded as standing
+    And Base holds no delegation for kiro-agent[bot]
+    When kiro-agent[bot] opens a spec-only pull request under F
+    Then the policy job passes the role gate as it does today
+    And the role map holds an explicit standing designation for kiro-agent[bot], not an absent one
 ```
 
 ## Adverse controls (an always-pass check fails these)
@@ -166,25 +174,34 @@ Feature: Adverse cases for the delegation check
       | the existing GATE-3.1 to GATE-3.7 policy tests                 | they pass unchanged                                 |
       | a code PR that also touches a spec path                        | it fails as GATE-1.7 requires                       |
       | a role-map entry written as a pattern or wildcard              | the owner-only rule and schema reject it            |
+
+  @SAD-2.5 @SAD-3.2
+  Scenario: A15 A delegation merged after the pull request opened does not authorize it
+    Given D opened a spec-only pull request under F at time t0
+    And Base held no delegation for D and F at t0
+    And Ky later merges a matching, unexpired, unrevoked delegation for D and F to Base
+    When the policy job re-runs on the pull request
+    Then the policy job fails with reason DELEGATION_AFTER_PR_OPENED
 ```
 
 ## Negative controls for the scenarios themselves
 
 - An always-deny check fails P1.
-- An always-pass check fails A1 to A12.
+- An always-pass check fails A1 to A12 and A15.
 - A check that reads delegations from the pull request head fails A6.
 - A check that treats a `KyPython` comment as a delegation fails A12.
 - A check that matches the identity name by pattern fails A5 and A14.
+- A check that reads only the current `main`, ignoring when the record arrived, fails A15.
 
 ## Requirement to scenario map
 
 | Requirement | Positive | Adverse |
 | --- | --- | --- |
-| SAD-1 | P1, P2 | A1, A8, A9 |
-| SAD-2 | P1 | A2, A3, A4, A5, A6, A10 |
+| SAD-1 | P1, P2, P3 | A1, A8, A9 |
+| SAD-2 | P1 | A2, A3, A4, A5, A6, A10, A15 |
 | SAD-3 | P1 | A1 to A7, A11 |
 | SAD-4 | none (adverse only) | A12, A13 |
-| SAD-5 | P2 | A10, A14 |
+| SAD-5 | P2, P3 | A10, A14 |
 | SAD-6 | P1 | all adverse cases and the negative controls |
 
 ## Not covered

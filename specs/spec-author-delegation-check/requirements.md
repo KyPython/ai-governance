@@ -50,7 +50,7 @@ Source: #238 comment 6844321931 item 2; ESE-15.6.
 1. SAD-1.1 WHEN a pull request adds, changes or deletes a file under a spec path AND any identity on that pull request (the opener, or the author or committer of any commit) is a `spec-author` identity designated as delegation-required THEN the system SHALL fail the policy job unless a valid delegation record exists for that identity, repository, issue and spec folder (SAD-2).
 2. SAD-1.2 WHERE an identity is designated standing, or is the owner, the system SHALL apply the existing GATE-3.1 behavior and SHALL NOT require a delegation. (Source: verified current behavior; changing it is an owner decision, see SAD-5.2.)
 3. SAD-1.3 WHEN a pull request touches several spec folders THEN the system SHALL require a valid delegation that covers each folder it touches, and SHALL fail for any folder without one.
-4. SAD-1.4 The system SHALL NOT treat any identity as delegation-required or standing by default. An identity with no designation SHALL be treated as delegation-required. (Source: fail closed, GATE-3.4.)
+4. SAD-1.4 The system SHALL NOT treat any identity as delegation-required or standing by default, with one exception stated in SAD-5.2. An identity with no designation that is not covered by SAD-5.2 SHALL be treated as delegation-required. (Source: fail closed, GATE-3.4. Precedence: SAD-5.2 governs the identities it names; SAD-1.4 governs every other identity.)
 5. SAD-1.5 The designation of an identity SHALL change only by a change to the owner-controlled role map or delegation file that the owner merges (SAD-2.4). No agent SHALL enroll itself, designate itself, or widen its own scope.
 
 **Evidence/test method:** policy-job result for a delegated identity with, and without, a valid delegation, read back from the actual job. Deferred to implementation.
@@ -69,7 +69,7 @@ Source: GATE-3.5 (read from `main`, not caller inputs); ESE-6.1, ESE-17.1; AGENT
 2. SAD-2.2 A valid delegation record SHALL name: the delegated identity; the repository; the issue; the spec folder (or folders) it may change; an expiry; and a revocation state. A record missing any of these SHALL be invalid. (Source: ESE-6.1, ESE-17.1.)
 3. SAD-2.3 WHEN a delegation record is expired, revoked, or names a different identity, repository, issue or spec folder than the pull request THEN the system SHALL treat it as not valid. (Source: ESE-17.1, ESE-17.4.)
 4. SAD-2.4 WHEN a pull request changes the delegation file or the role map THEN the system SHALL fail the policy job unless the opener and every commit identity match the owner, using the same rule that already protects `roles.yml`. (Source: GATE-3.3.)
-5. SAD-2.5 WHEN one pull request both changes the delegation file or role map and changes a spec path THEN the system SHALL fail the policy job. A delegation that did not exist on `main` before the pull request SHALL NOT authorize that pull request.
+5. SAD-2.5 WHEN one pull request both changes the delegation file or role map and changes a spec path THEN the system SHALL fail the policy job. A delegation SHALL authorize a pull request only if the commit that introduced the matching record reached `main` before the pull request was opened. The system SHALL decide this from `main`'s history (the introducing commit on the first-parent history of `main` and its commit time, compared with the pull request's creation time from the GitHub API), and SHALL still read the current `main` for expiry and revocation. A delegation merged after the pull request opened SHALL fail with reason `DELEGATION_AFTER_PR_OPENED`.
 6. SAD-2.6 The delegation lifetime limit is UNKNOWN until the owner adopts one. WHILE no limit is adopted, the system SHALL still require an expiry on every record and SHALL NOT supply a default.
 
 **Evidence/test method:** a delegation added in the same PR fails (SAD-2.5); a delegation that exists on `main` passes only for the exact subject. Deferred to implementation.
@@ -85,7 +85,7 @@ Source: GATE-3.4; ESE-1.8; the existing role-gate message style.
 
 #### Acceptance Criteria
 1. SAD-3.1 WHEN the delegation file cannot be read, cannot be parsed, or fails its schema THEN the system SHALL fail the policy job for any pull request that touches a spec path by a delegation-required identity, and SHALL report reason `DELEGATION_UNREADABLE`.
-2. SAD-3.2 The system SHALL report one of these reasons when it fails a delegation check: `NO_DELEGATION`, `DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_WRONG_IDENTITY`, `DELEGATION_WRONG_REPOSITORY`, `DELEGATION_WRONG_ISSUE`, `DELEGATION_WRONG_SPEC_FOLDER`, `DELEGATION_IN_SAME_PR`, `DELEGATION_UNREADABLE`, `UNDESIGNATED_IDENTITY`. The message SHALL name the identity and the spec folder.
+2. SAD-3.2 The system SHALL report one of these reasons when it fails a delegation check: `NO_DELEGATION`, `DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_WRONG_IDENTITY`, `DELEGATION_WRONG_REPOSITORY`, `DELEGATION_WRONG_ISSUE`, `DELEGATION_WRONG_SPEC_FOLDER`, `DELEGATION_IN_SAME_PR`, `DELEGATION_AFTER_PR_OPENED`, `DELEGATION_UNREADABLE`, `UNDESIGNATED_IDENTITY`. The message SHALL name the identity and the spec folder.
 3. SAD-3.3 The system SHALL NOT let a stale or missing check count as a pass. A skipped delegation check SHALL be reported as not passed.
 4. SAD-3.4 The system SHALL report a pass line that says the delegation was matched on the base branch and that identities are self-declared and not verified, consistent with the existing role-gate pass message.
 
@@ -119,7 +119,7 @@ Source: verified current behavior; ESE-13.4; AGENTS rules 1, 2, 7.
 
 #### Acceptance Criteria
 1. SAD-5.1 The system SHALL leave GATE-1 to GATE-5 behavior unchanged for every pull request that does not involve a delegation-required identity, including the code-path rules, the exemption rule, the owner-only `roles.yml` rule, and the coder rules.
-2. SAD-5.2 WHEN the owner has not designated `kiro-agent[bot]` as delegation-required THEN the system SHALL keep today's behavior for it. Whether Kiro should need a delegation is an owner decision and is UNKNOWN here.
+2. SAD-5.2 The identities listed in the `spec-author` role on `main` when the check first ships (today `kiro-agent[bot]` and `KyPython`) SHALL keep today's GATE-3.1 behavior until the owner designates one of them delegation-required by a merged change. The change that ships the check SHALL record each of them explicitly as standing, so that no listed identity is left undesignated; it SHALL NOT rely on SAD-1.4's default for them. Whether Kiro should need a delegation is an owner decision and is UNKNOWN here.
 3. SAD-5.3 The system SHALL keep `ai-governance / verdict` as the required check, SHALL keep owner-only merge, and SHALL NOT enable auto-merge or any automatic approval.
 4. SAD-5.4 The change that implements SAD-1 to SAD-4 SHALL be a proposed future task. It SHALL NOT be made by an agent without Ky's explicit request and Ky's own merge, and an agent SHALL NOT edit a gate to make it pass. (Source: AGENTS rule 7; ESE-13.4.)
 5. SAD-5.5 The system SHALL NOT introduce a wildcard identity, a pattern match on identity names, or a catch-all entry for any role. Each identity is an exact, enrolled entry.
@@ -160,9 +160,9 @@ Source: ESE-9 to ESE-14 method; CONT-12-R1.
 
 | Requirement | Scenarios in `scenarios.md` | Tasks in `tasks.md` |
 | --- | --- | --- |
-| SAD-1 | P1, P2, A1, A8, A9 | T1, T2, T3 |
-| SAD-2 | P1, A2, A3, A4, A5, A6, A10 | T1, T2, T3, T4 |
+| SAD-1 | P1, P2, P3, A1, A8, A9 | T1, T2, T3, T4 |
+| SAD-2 | P1, A2, A3, A4, A5, A6, A10, A15 | T1, T2, T3, T4 |
 | SAD-3 | A1 to A7, A11 | T2, T3 |
 | SAD-4 | A12, A13 | T2, T3, T5 |
-| SAD-5 | P2, A10, A14 | T1, T3, T6 |
+| SAD-5 | P2, P3, A10, A14 | T1, T3, T4, T6 |
 | SAD-6 | all | T2, T3, T6 |
