@@ -20,6 +20,7 @@ Feature: Liveness when a provider is unavailable
     Given the registry enrolls candidate X for the G2 spec-writing stage
     And candidate X has a recorded G2 evaluation that meets the thresholds Ky adopted
     And Kiro unavailability is recorded from an authorized human report
+    And candidate X's provider capacity is shown by verified capacity input with an adopted source, credit scope and freshness
     And Ky has recorded a per-task grant naming candidate X's authenticated principal for this issue, spec revision, phase and paths
     When X publishes requirements, design and tasks under the spec path
     Then the spec publisher accepts a spec-only change with X's observed attribution
@@ -89,12 +90,17 @@ Feature: Adverse cases for capability-qualified routing
     And the report states eligibility UNKNOWN or REJECTED with the evidence reference
 
   @CONT-13
-  Scenario: A4 A registry conflict with the AIV record is reported
-    Given the AIV record lists agent Z with role "reviewer"
-    And a capability registry entry lists Z as eligible for the G2 spec-writing stage
+  Scenario Outline: A4 A registry entry that contradicts the AIV record is reported
+    Given the AIV record lists agent <agent> with permitted capabilities <aiv_caps>
+    And a capability registry entry makes <agent> eligible for <stage>, which requires <needed>
     When the registry is validated
-    Then the validator reports ROLE_CONFLICT for Z
+    Then the validator reports <result>
     And neither record is rewritten
+
+    Examples:
+      | agent       | aiv_caps                                   | stage         | needed      | result        |
+      | antigravity | repo:read, repo:write, subprocess:exec     | G2 spec       | spec:write  | ROLE_CONFLICT |
+      | kiro        | repo:read, spec:read, spec:write, subprocess:exec | G2 spec | spec:write  | no conflict   |
 
   @CONT-05-R1
   Scenario Outline: A5 Impersonation of a recognized identity fails
@@ -150,11 +156,13 @@ Feature: Adverse cases for capability-qualified routing
       | retrying Kiro through another interface           |
 
   @CONT-08-R1
-  Scenario: A9 Concurrent local and cloud fallbacks yield one owner
-    Given candidates X and Y are both eligible and are dispatched at the same time from local and cloud
-    When both attempt to claim the same task
+  Scenario: A9 Concurrent local and cloud fallbacks race the claim before any dispatch
+    Given candidates X and Y are both eligible for the same task, from local and cloud
+    When both submit an ownership claim to the claim store at the same time
     Then the claim store admits exactly one current owner with a new fencing token
-    And a late write from the other is rejected as STALE_TOKEN
+    And only the winner is dispatched, with that fencing token
+    And the loser is never dispatched
+    And a write presenting any other fencing token is rejected as STALE_TOKEN
     And exactly one branch and one PR exist for the task
 
   @CONT-09-R1
@@ -235,7 +243,9 @@ A scenario set that always passes proves nothing. The implementation task must s
 - An always-deny selector fails S1 and S2.
 - A selector that ignores the registry and uses a fixed vendor order fails S2.
 - A selector that ranks by public leaderboard fails A3.
-- A claim store without fencing fails A9.
+- A validator that flags the AIV role label alone fails the `kiro` row of A4.
+- A selector that admits an unknown-capacity candidate to the automatic path is caught by a variant of S1 with X's capacity UNKNOWN, which must yield draft-only output and no dispatch.
+- A claim store without fencing, or a dispatcher that dispatches before the claim resolves, fails A9.
 - A publisher that trusts the commit author field fails A5.
 
 ## Requirement to scenario map

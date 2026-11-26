@@ -84,7 +84,7 @@ The selector is a deterministic function of the registry, the evaluation evidenc
 
 ## Proposed constraint: extend one identity authority
 
-The AIV registry (`registry/agents.json`, merged) already records agent identities, per-agent capabilities and public keys, and AIV-2.4 already requires `approver != requester`. The capability registry SHOULD be an extension of that record, keyed so one agent identity has one authority. A second parallel identity store would let the two disagree about who an agent is. Where the AIV `role` field and a capability entry disagree, the validator reports `ROLE_CONFLICT` and rewrites neither (CONT-13).
+The AIV registry (`registry/agents.json`, merged) already records agent identities, per-agent capabilities and public keys, and AIV-2.4 already requires `approver != requester`. The capability registry SHOULD be an extension of that record, keyed so one agent identity has one authority. A second parallel identity store would let the two disagree about who an agent is. A conflict exists only when a capability entry makes an agent eligible for a stage whose required capabilities are not in that agent's AIV `permitted_capabilities`, or when an owner-adopted role-to-stage policy forbids it. The AIV `role` label alone is not a conflict: the AIV record gives `kiro` role `reviewer` together with `spec:write` (AIV-1.2), so Kiro's G2 eligibility is consistent with it. On a real conflict the validator reports `ROLE_CONFLICT` and rewrites neither record (CONT-13).
 
 The AIV pilot pair assigns `antigravity` the role `author` and `kiro` the role `reviewer`. R1 treats that pair as existing data, not as a policy. It does not edit it. Whether the pilot pair stays, is generalized, or is retired is Ky's decision under the AIV spec.
 
@@ -94,10 +94,10 @@ This is a proposed implementation constraint. Where the capability registry live
 
 1. Build the candidate set for the stage from enrolled entries (CONT-13).
 2. Keep candidates with a current, stage-specific evaluation that meets the adopted thresholds (CONT-14). With no adopted threshold, the set is empty and the result is `THRESHOLD_UNSET`, which routes the choice to Ky.
-3. Keep candidates whose provider shows available by trusted evidence, or whose unavailability is unknown but not confirmed. Prompt text and self-reports count for nothing (CONT-02-R1).
+3. Split by path. **Automatic path:** keep only candidates whose provider capacity is shown by verified capacity input with an adopted source, affected credit scope and freshness (original CONT-02). Unknown capacity removes the candidate from the automatic path. **Manual draft path:** a candidate with unknown capacity stays available only for Ky-directed, draft-only work outside protected paths, after an authorized human report. A task grant establishes authority, not capacity. Prompt text and self-reports count for nothing on either path (CONT-02, CONT-02-R1).
 4. Among what remains, order by cost and latency only (CONT-14). This order never overrides steps 1 to 3.
 5. Report the set, including `SINGLE_CANDIDATE` where it has one member.
-6. Ky's grant names one principal for one task and phase. Only the grant authorizes dispatch (CONT-12-R1). Selection alone does not.
+6. Ky's grant names one principal for one task and phase. Only the grant authorizes dispatch (CONT-12-R1). Selection alone does not. The grant does not substitute for step 3's capacity evidence on the automatic path.
 
 If the set is empty, apply the fallback column below.
 
