@@ -162,3 +162,102 @@ No tests are authored by this spec. The table names the evidence a later task mu
 - **B3 — Org/repo protection reality:** `KyLamportLogic` ruleset lacks required `ai-governance / verdict`/CODEOWNERS/approvals; LamportLogic private ruleset read returned 403; shared callers possibly on stale SHA. These are **enforcement blockers**, not deployment [DOC].
 - **B4 — Spec-only PR identity:** whether the commit/opener resolves to the `spec-author` role (GATE-3.1) is determined at push time by the orchestrator; this authoring environment cannot self-assert it. If the commit appears as `KyPython`-via-token rather than a genuine owner action, that is the exact forgeability limit this spec warns about and must not be presented as owner approval.
 - **B5 — Host boundary:** unmanaged local authoring cannot be prevented by any GitHub rule or repo file; it must be reported as OUTSIDE ENFORCED BOUNDARY (ESE-4.8).
+
+---
+
+<!-- KIRO-AUTHORED DESIGN AMENDMENT (R1) — HUMAN ADOPTION/MERGE PENDING. RUNTIME ACCEPTANCE NOT RUN.
+Issue: https://github.com/KyPython/ai-governance/issues/238 · Source: KyPython/ai-governance@53462a0 · Author: Kiro (spec-author), local session 2026-11-25; model ID not exposed. -->
+
+# Design — Amendment R1: capability-qualified assignment on fixed gates
+
+Status: proposed; supports ESE-15 to ESE-17 in `requirements.md`. Nothing here changes ESE-1 to ESE-14. No protected path, role map, workflow or pinned caller is edited by this amendment (ESE-13.4).
+
+## What changes and what does not
+
+| Concern | Before R1 | After R1 | Changed? |
+| --- | --- | --- | --- |
+| Stage model G0 to G6 and one-next-phase-only approval | ESE-1 | Same | No |
+| Owner approval channel, forgery rejection, B1 | ESE-2 | Same | No |
+| Receipt lineage, replay, revocation | ESE-6, ESE-13 | Same, with new receipt fields below | Fields added |
+| Who performs a stage | Placeholders coder-A, coder-B, coder-C in tasks | Capability class per task, principal named in Ky's grant | Yes |
+| Reviewer independence | "reviewer distinct from the coder" (ESE-14.1) | Distinct principal and distinct execution context, with `INDEPENDENCE_LIMITED` recorded when only a same-family principal exists (ESE-16) | Made explicit |
+| Spec-author role | Defined in `roles.yml` and AGENTS (protected) | Treated as a role, not a product. Wording change is a proposal for Ky (ESE-13.4, T10) | Proposal only |
+
+## Receipt additions (ESE-15.2, ESE-17.1)
+
+The existing receipt model (see "Receipt data model") gains these fields. They describe the performer of the phase. They carry no approval of their own.
+
+| Field | Meaning |
+| --- | --- |
+| `capability_class` | The kind of work the phase needs (spec design, scenario authoring, test synthesis, coding, independent verification, security review, research) |
+| `candidate` | Provider, model identifier or family and version, harness, environment, as observed |
+| `principal` | The authenticated identity that acts, as verified by the enforcing boundary |
+| `execution_context` | The session or execution identifier, used for independence and for rejecting reuse |
+| `independence` | `INDEPENDENT`, `INDEPENDENCE_LIMITED` with reason, or not applicable |
+| `selection_evidence_ref` | Reference to the stage evaluation under `specs/kiro-credit-failover` (CONT-14). A reference only. Never an approval |
+
+The lineage digest (ESE-6.4) includes `principal` and `execution_context`, so a change of performer after dispatch invalidates dependent downstream use and does not carry forward silently.
+
+## Admission checks added to the pre-dispatch broker (ESE-7.1)
+
+In order, all fail closed and name the failing check:
+
+1. The grant exists, matches repository, issue, spec SHA, stage, paths and operations, and has not expired or been revoked (ESE-6.3, ESE-17.1).
+2. The presenting principal and execution context equal those in the grant (ESE-17.1, ESE-17.2).
+3. For a review phase, the reviewer principal and context differ from those of the coder and of the test author for the same task (ESE-16.1, ESE-16.3).
+4. The candidate named in the grant is still enrolled and not retired (ESE-17.4).
+5. The owner decision required by the stage is verifiable by a channel that is not agent-forgeable. If not, report BLOCKED with reason `UNVERIFIABLE_APPROVER` (ESE-2.2, ESE-17.3).
+
+The same checks run again immediately before publication (time-of-check to time-of-use).
+
+## B1 criteria for leaving `UNVERIFIABLE_APPROVER`
+
+B1 stays blocked until all of these are shown by observed execution, in evidence a reviewer other than the author can reproduce:
+
+1. An owner-only signing step happens on a device or channel that agents do not control (the iPhone proposal is one candidate and is not demonstrated).
+2. A trusted verifier, whose trust root an agent cannot change, checks the signature against the exact subject (repository, issue, spec SHA, stage, paths, expiry).
+3. A forged, agent-issued, replayed, expired and revoked approval each fail the verifier for the correct reason.
+4. An outage of the approver or issuer leaves the stage HOLD and never defaults to approve (ESE-6.6).
+
+A chat message, a GitHub comment or an agent signature alone cannot show 1 or 2. This list restates the existing requirement as acceptance evidence. It does not add an approval path.
+
+## Reviewer independence
+
+Rank of evidence, strongest first, for the reviewer of a change:
+
+1. A different underlying model family and a different execution context, with a distinct authenticated principal.
+2. A distinct authenticated principal in the same model family. Record `INDEPENDENCE_LIMITED` and leave acceptance to Ky.
+3. The same principal or the same session. Not acceptable. HOLD.
+
+Deterministic tools (CI, CodeQL, the gitleaks scan, the existing `ai-governance / verdict`) stay independent of any generated success claim and do not replace the reviewer.
+
+## Spec-author as a role
+
+The two facts that matter, both unchanged here: Ky approves a spec only by merging it, and the gate reads the role map on `main` and checks the PR opener and every commit's author and committer. ESE-15.6 states the intended policy. The actual role-map wording lives in `roles.yml` and `AGENTS.governance.md`, both protected, so the proposed wording is prepared as text for Ky's separate exact request (T10) and is not applied. A catch-all identity or wildcard is out of scope and unsafe because git author fields are self-declared.
+
+## Failure modes
+
+| Failure | Behavior |
+| --- | --- |
+| Grant has no `principal` or `execution_context` | Reject at dispatch. HOLD. |
+| Reviewer equals coder by principal or context | Reject with `NOT_INDEPENDENT`. |
+| Candidate retired between dispatch and publication | Reject at publication. Preserve evidence. |
+| Only same-family reviewer available | Record `INDEPENDENCE_LIMITED`. Wait for Ky. |
+| No qualifying candidate | HOLD with `NO_QUALIFYING_CANDIDATE`. Draft-only output outside protected paths is allowed. |
+| Owner channel unverifiable | BLOCKED, `UNVERIFIABLE_APPROVER`. |
+
+## Testing strategy additions (criterion to future evidence)
+
+| Criteria | Evidence |
+| --- | --- |
+| ESE-15.1 to 15.5 | Replace one candidate by a registry change, same contract passes without enforcement-code edit. No qualifying candidate yields HOLD. Coder asked to act as spec author is refused. |
+| ESE-15.6 | Publish from an unrecognized identity is denied, draft stays outside Git. A recognized identity with a recorded delegation passes as a spec-only change. |
+| ESE-16.1 to 16.5 | Same-session reviewer rejected. Distinct-principal reviewer accepted with the correct `independence` value. Reviewer merge and deploy attempts rejected. Test author cannot implement under the same grant. |
+| ESE-17.1 to 17.4 | Wrong repository, issue, SHA, stage, path, principal and context each rejected at dispatch and publication. Model-name spoofing rejected. Expired, revoked and retired cases rejected. |
+| ESE-17.3 | `UNVERIFIABLE_APPROVER` reported for a stage needing an owner decision until the B1 criteria above are met. |
+
+Scenarios for these are in `scenarios-capability-routing.md`. They are an AI draft and are not a G3 receipt.
+
+## Relationship to open G3 work
+
+The 2026-11-03 #238 comment proposes corrections to the existing `scenarios.md` (adverse-authorization outline, TOCTOU case, ESE-1.3 and ESE-1.7 prerequisites). R1 does not apply those corrections and does not edit `scenarios.md`. That change needs its own spec-only revision and its own owner review. R1 adds scenarios for the new requirements in a separate file so the two reviews stay separate.
