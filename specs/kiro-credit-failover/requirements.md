@@ -70,3 +70,97 @@ Existing accessibility requirements were adopted in the conversation, with no Gi
 ## Review state
 
 All CONT requirements are proposed and their future runtime acceptance tests are NOT RUN. The human fallback-author decision is recorded separately; it is not approval of these new requirement sentences. Structural verification cannot promote this packet to approved.
+
+---
+
+<!-- KIRO-AUTHORED SPEC AMENDMENT PROPOSAL (R1) — HUMAN ADOPTION/MERGE PENDING. RUNTIME ACCEPTANCE NOT RUN.
+Issue: https://github.com/KyPython/ai-governance/issues/219 (state: CLOSED at read time; see "Open owner decisions")
+Source: KyPython/ai-governance@53462a0 (origin/main at read time, 2026-11-25)
+Owner request: issue #219 comment 6600237280 (2026-11-03, GPT-6 relay of Ky's request; DESIGN DRAFT, NO EXECUTION AUTHORITY) and issue #238 comment 6844321931 (2026-11-12, "spec-author as an authorized role, not a single AI product").
+Provider/author: Kiro (spec-author role), drafted in a local Kiro CLI session on 2026-11-25; the exact underlying model ID is not exposed (model selection: Auto).
+Human contribution: Ky selected the goal, the two-PR split, "draft protected-file text only", and approved this plan in the session. Prose drafted by Kiro.
+This amendment is NOT an owner stage receipt, NOT a role-map change, NOT an adoption of the original CONT text, and NOT a claim of runtime enforcement. -->
+
+# Revision R1 — capability-qualified lifecycle routing
+
+Status: proposed for human review. Spec ID: CONT (continuation of the packet above) · Issue: #219 · Revision: R1.
+
+R1 keeps every original requirement ID and sentence above unchanged. Each R1 clause below is read together with the original sentence it names; if they conflict, the conflict is reported for Ky and neither silently wins. On adoption (Ky merges this spec-only PR), the R1 clause governs the generalized scope and the original sentence stays as the traceable baseline.
+
+## R1 purpose
+
+The packet above treats Kiro as the default author and Codex as the named fallback. The owner's 2026-11-03 request and 2026-11-12 correction ask that no provider, product or model be the permanent sole performer of any lifecycle stage, and that Kiro credit exhaustion not make planning depend on Kiro. R1 generalizes the continuity contract from "Codex after Kiro" to "any enrolled, evidenced, authorized candidate at any stage". It does not change who approves. Human approval, owner merge, deployment and spend stay human.
+
+## R1 evidence states
+
+Each item names its source and keeps its own authority. Conflicts are preserved, not resolved.
+
+| State | Observation | Source and read date |
+| --- | --- | --- |
+| VERIFIED CURRENT OBSERVATION | Runbook PR #220 (merge `9e09434c789e2ac25e88fd6a712f31fa318d3ef8`) and the continuity spec PR #221 (merge `fb5e49ac157a20fcb5af73636b754537a0cf8f25`) are MERGED. | `gh pr view`, 2026-11-25 |
+| VERIFIED CURRENT OBSERVATION | The merged `requirements.md` on main still reads "Status: proposed for human review". Merge is Ky's adoption act; the status line is unchanged text. R1 does not edit it. | `origin/main` @ `53462a0` |
+| VERIFIED CURRENT OBSERVATION | Issue #219 is CLOSED (updated 2026-11-04). Issue #238 is OPEN. Issue #11 (relay) is OPEN. The 2026-11-03 comment names #219 the canonical home. | `gh issue view`, 2026-11-25 |
+| VERIFIED GOVERNING RULE | `roles.yml` lists `kiro-agent[bot]` and `KyPython` as `spec-author`, with the description "Only Kiro, with Ky as owner override". `AGENTS.governance.md` rule 2 says "Spec author: Kiro (`kiro-agent[bot]`) only". Both are protected paths. | `origin/main` @ `53462a0` |
+| VERIFIED CURRENT OBSERVATION | `registry/agents.json` (AIV, merged) holds a two-agent pilot pair: `antigravity` role `author` and `kiro` role `reviewer`, with per-agent capability lists and public keys. This is a second place where roles are tied to named agents. | `origin/main` @ `53462a0` |
+| HISTORICAL EVIDENCE | #238 comment 6844321931 (2026-11-12) reports "Kiro has run out of credits". | Issue comment, relayed by GPT-6 |
+| VERIFIED CURRENT OBSERVATION | A Kiro session answered and read files on 2026-11-25. | This session |
+| INFERENCE | The 2026-11-12 report and the 2026-11-25 observation concern different dates, and neither shows the state of the shared credit pool for other surfaces. Per CONT-02, unknown capacity stays unknown and a prompt or a session reply does not establish provider health. | R1 |
+| UNKNOWN | Evaluation thresholds, retry and probe bounds, freshness windows, the candidate list, who may enroll candidates, and where the registry lives (AIV registry extension or other). | See "R1 unresolved facts" |
+| UNKNOWN | Whether #219 should be reopened, or R1 tracked by a comment on the closed issue. Not decided here. No issue is created. | Owner decision |
+
+## R1 amendments to existing requirements
+
+Original text for CONT-01, CONT-03, CONT-04 and CONT-07 already speaks of "provider" without a vendor name and is unchanged. The clauses below generalize the rest.
+
+| ID | R1 clause (read with the original CONT sentence) | Acceptance evidence | Source / rationale | Depends on |
+| --- | --- | --- | --- | --- |
+| CONT-02-R1 | WHEN unavailability of any enrolled provider is recorded from an authorized human report or an authenticated provider observation, the process MUST allow a draft-only continuation by any candidate that is eligible for the stage under CONT-13 and CONT-14, within the original task scope. Kiro MUST be treated as one candidate, not as the default or required performer. Automatic routing to any candidate MUST still require the verified capacity input of original CONT-02; a task grant MUST NOT stand in for capacity evidence, and unknown capacity MUST limit a candidate to the manual draft-only path. A statement by a session, agent or prompt about its own availability MUST NOT establish provider health or unavailability. | Human-report-only case yields a manual draft by an eligible non-Kiro candidate while provider health stays UNKNOWN. A session claiming "I am available" or "I am exhausted" changes no routing state. | #219 comment 6600237280 "Failover at EVERY phase"; #238 comment 6844321931 item 1 | CONT-13, CONT-14 |
+| CONT-05-R1 | Draft mode MUST attribute each artifact to the actual provider, model identifier or family, harness and environment that produced it, as observed from the authenticated execution principal, not as self-reported text. A draft MUST stay outside protected paths. Publication under `specs/` MUST require both that the publishing identity is recognized in the owner-approved role map and that an issue-specific delegation and scope is recorded. | A draft by candidate X carries X's observed attribution. Attribution text that names a different vendor is rejected. A publish attempt from an unrecognized identity is denied and the draft stays outside Git. | #238 comment 6844321931 item 2; AGENTS rule 2 limit paragraph | CONT-13 |
+| CONT-06-R1 | Every attempt by every candidate MUST use an already authorized account and capability within the approved budget. Enrollment in the registry MUST NOT itself grant spend, credentials, or API access. Running an evaluation under CONT-14 MUST be a separately authorized, budgeted action. | A candidate enrolled but unfunded stays queued with zero calls. An evaluation run without a recorded budget authorization does not start. | Original CONT-06; owner rule "no spend, no credential change" | CONT-13, CONT-14 |
+| CONT-08-R1 | One durable task owner, an atomic claim and monotonic fencing MUST apply to every stage and every candidate. Reassigning remaining work from one candidate to another MUST be a new claim with a new fencing token. A stale writer MUST NOT commit progress or effects after reassignment. | Reassignment from candidate A to candidate B at any stage yields one current owner. A late write from A is rejected. | Original CONT-08; #219 comment "Recovery/concurrency" | CONT-15 |
+| CONT-09-R1 | Uncertain-effect reconciliation (original CONT-09) MUST apply to effects from any candidate at any stage, including spec publication, test publication, code publication and review publication. | A timeout after a possible publish by any candidate cannot produce a duplicate issue, branch, PR or comment. | Original CONT-09 | CONT-15 |
+| CONT-10-R1 | Recovery of any provider MUST rely on observed account recovery under an authorized bounded probe policy. A recovered provider MUST rejoin the eligible pool for subsequent work only. It MUST NOT displace an active writer or replay completed or canceled work. | Concurrent recovery of two providers admits one current probe per provider. Neither takes over active work. | Original CONT-10; #219 comment "Recovered Kiro rejoins the eligible pool" | CONT-15 |
+| CONT-11-R1 | Human cancellation, revoked task authority, a withdrawn registry entry, and a revoked per-task grant MUST stop new dispatch and publication for the affected candidate and task. Provider recovery, queue retries and selector reruns MUST NOT recreate that authority. | Revoking a candidate's entry mid-task blocks its next dispatch and its pending publish. Prior evidence is preserved. | Original CONT-11 | CONT-13 |
+| CONT-12-R1 | Reports MUST separate: candidate selection evidence, provider availability, authenticated principal, owner authorization, drafting outcome, test and CI evidence, human approval or merge, and deployed enforcement. A selection result MUST NOT be reported as approval, and a registry entry MUST NOT be reported as capability proof. | A report showing "selected" with no owner grant displays the stage as unauthorized. A selected candidate with no stage evaluation displays "eligibility UNKNOWN". | Original CONT-12; #219 comment "The selector is never an approver" | CONT-13, CONT-14 |
+
+## R1 new requirements
+
+| ID | Exact proposed requirement | Acceptance evidence | Source / rationale | Depends on |
+| --- | --- | --- | --- | --- |
+| CONT-13 | The process MUST choose a performer for each lifecycle stage G0 to G6 only from an owner-controlled, versioned capability registry. A registry entry MUST be keyed by provider, model identifier or family and version, agent harness, and permitted execution environment. The process MUST NOT designate any single provider, product, model, harness or IDE as the permanent sole eligible performer of any stage or role. Enrolling, retiring, or changing the permitted stages of an entry MUST require Ky's authenticated approval and merge. A selector, a candidate, or any agent MUST NOT change its own entry, its role, its permitted stages, or the admission policy. The selector MUST NOT be an approver. The process MUST NOT create a second authority for agent identity: where the existing AIV registry (`registry/agents.json`) already records an agent, a capability entry that requires a capability absent from that agent's AIV `permitted_capabilities`, or that an owner-adopted role-to-stage policy forbids, MUST be reported as a conflict, not silently overwritten. The AIV `role` label alone MUST NOT count as a conflict. WHEN only one candidate is eligible for a stage, the process MUST report `SINGLE_CANDIDATE` for that stage. | (a) Retire one candidate and enroll an unrelated provider by a registry change alone. The same G0 to G6 contract passes with no change to enforcement code. (b) A candidate's attempt to edit its own entry is rejected at the registry publish boundary. (c) A stage with one eligible candidate reports `SINGLE_CANDIDATE`. (d) A capability entry that requires a capability missing from the agent's AIV record is reported as a conflict, and Kiro's G2 eligibility with AIV role `reviewer` plus `spec:write` is not. | #219 comment 6600237280 "fixed gates, dynamic providers"; AIV spec (agent identity, `approver != requester`) | CONT-01 |
+| CONT-14 | A candidate MUST be eligible for a stage only on reproducible, stage-specific evaluation evidence for that exact provider, model, harness and environment combination. The evidence MUST record run ID, input SHA, fixtures, outcomes, and capacity observed. It MUST include positive fixtures and counterexample fixtures. Provider or product names, marketing labels, public leaderboard rank, and self-reported model identity MUST NOT establish eligibility or ranking. Eligibility MUST be decided on quality and security thresholds first. Cost and latency MAY choose among candidates that are already eligible. The thresholds are UNKNOWN until Ky adopts them. While a stage has no adopted threshold, the process MUST treat no candidate as automatically eligible for that stage and MUST route the choice to Ky. | (a) A candidate with a high public rank that fails the stage's counterexample fixture is rejected. (b) A lower-ranked candidate that passes is eligible. (c) A stage with no adopted threshold selects no candidate automatically and reports `THRESHOLD_UNSET`. (d) An evaluation record missing run ID or input SHA is rejected. | #219 comment "Objective selection, not a marketing 'best' label"; owner rule "task-specific evidence, not names or leaderboards" | CONT-13 |
+| CONT-15 | For each stage G0 to G6 the process MUST apply an ordered fallback: first the next eligible registry candidate holding current stage authority, then read-only or draft-only output outside protected paths where the stage allows it, then a HOLD that names the reason. WHEN a provider is exhausted or unavailable, the process MUST reassign only the remaining work of the original issue and revision, preserving accepted artifact hashes and human decisions. WHEN no qualifying candidate or required authority exists, the process MUST report `BLOCKED` or `UNKNOWN` under the same canonical issue and MUST NOT let any actor assume another actor's identity or role. Owner decisions (stage approval, merge, deployment, spend) MUST NOT fall back to an AI. At G6 the reviewer MUST be a distinct authenticated principal from the coder of the same task. | The matrix in `design.md` (R1) is exercised row by row: Kiro exhausted at G2 yields an alternate spec-only contribution that stops for owner approval. No qualifying G6 reviewer yields HOLD. A coder asked to "temporarily act as Kiro" is refused at the dispatch boundary. | #219 comment "Failover at EVERY phase"; #238 comment 6844321931 item 3 | CONT-13, CONT-14 |
+
+## R1 unresolved facts
+
+These stay UNKNOWN. Nothing below is filled in by inference.
+
+| Fact | Current evidence | Required before use |
+| --- | --- | --- |
+| Stage evaluation thresholds | None adopted | Numbers adopted by Ky per stage |
+| Retry bounds, probe bounds, freshness window | None adopted (as in the original packet) | Exact values reviewed by Ky |
+| Initial candidate list and who may enroll | None enrolled | Ky's enrollment, one candidate at a time, by merged registry change |
+| Registry home | The AIV registry exists; no decision to extend it | Ky's decision. Extending AIV is the proposed default so identity has one authority |
+| Reopening #219 | Issue is CLOSED; the owner comment names it canonical | Ky's decision. R1 creates no issue |
+| Owner-only authorization channel | iPhone signer proposed, not implemented (B1) | Observed independent owner-only signing and trusted verification (see ESE spec) |
+| Which spec-author identities `roles.yml` recognizes | Kiro and KyPython | Ky's separate exact request (ESE T10). R1 edits no protected file |
+
+## R1 traceability
+
+| Requirement | Scenarios in `scenarios.md` | Tasks |
+| --- | --- | --- |
+| CONT-02-R1 | S1, A6 | T8, T10 |
+| CONT-05-R1 | S1, A2, A5, A16 | T8, T10 |
+| CONT-06-R1 | A8 | T8, T11 |
+| CONT-08-R1 | A9 | T8, T10 |
+| CONT-09-R1 | A10 | T8, T10 |
+| CONT-10-R1 | S3 | T8, T10 |
+| CONT-11-R1 | A7, A15 | T8, T10 |
+| CONT-12-R1 | A11 | T8, T10 |
+| CONT-13 | S1, S2, A1, A4 | T8, T9, T12 |
+| CONT-14 | S1, A3, A12, A16 | T8, T11 |
+| CONT-15 | S1, S3, A2, A11, A13, A14, A15 | T8, T10 |
+
+## R1 review state
+
+All R1 requirements are proposed. Their runtime acceptance tests are NOT RUN. Ky adopts R1 only by reviewing and merging this spec-only PR. No agent dispatch, role edit, new bot identity, issue, Worker mutation, paid call or approval receipt is made or authorized by this amendment.
