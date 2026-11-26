@@ -318,6 +318,7 @@ Evidence states for R1 (sources named; conflicts kept):
 - VERIFIED CURRENT OBSERVATION: B1 (an owner-only, non-agent-forgeable approval channel) is not demonstrated. The iPhone signer is a proposal, not an implemented or verified channel.
 - HISTORICAL EVIDENCE: the 2026-11-03 #238 comment proposes Cursor as a distinct T1 reviewer "subject to real access/independence verification". That is a planning answer, not an authorization, and ESE-15 withdraws it as a permanent appointment.
 - UNKNOWN: evaluation thresholds, the candidate list, and the registry home. They are set by Ky and tracked in `specs/kiro-credit-failover` (CONT-13, CONT-14).
+- OUTSTANDING SPEC DEPENDENCY: CONT-13 to CONT-15 are proposed in companion spec-only PR #317 and are not on `main`. References to them here name a proposed contract, not an existing one.
 
 ### Requirement 15: Capability-qualified lifecycle assignment (ESE-15)
 
