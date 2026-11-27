@@ -19,7 +19,7 @@ POLICY = step_script("- name: Governance policy checks", "\n  security:")
 TEST_PARSER = step_script("- name: Parse test results (scorecard)", "\n  policy:")
 SCORECARD = step_script("- name: Scorecard (machine-readable summary)", "\n      - name: Upload scorecard artifact")
 TEMPLATE = (ROOT / "templates/ai-governance.yml").read_text()
-ROLES_FIXTURE = "version: 1\nowner: KyPython\nspec_paths:\n  - specs/\n  - .kiro/specs/\nroles:\n  spec-author:\n    identities:\n      - KyPython\n      - kiro-agent[bot]\n  coder:\n    identities:\n      - cursor[bot]\n      - cursoragent\n      - kiro-agent[bot]\n      - codex\n      - chatgpt-codex-connector[bot]\n"
+ROLES_FIXTURE = "version: 1\nowner: KyPython\nspec_paths:\n  - specs/\n  - .kiro/specs/\nroles:\n  spec-author:\n    identities:\n      - KyPython\n      - kiro-agent[bot]\n    standing:\n      - KyPython\n      - kiro-agent[bot]\n  coder:\n    identities:\n      - cursor[bot]\n      - cursoragent\n      - kiro-agent[bot]\n      - codex\n      - chatgpt-codex-connector[bot]\n"
 
 SPEC = """# Requirements: demo
 ### Requirement 1: Demo (DEMO-1)

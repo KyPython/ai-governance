@@ -3,3 +3,6 @@
 
 # Agent role map: Ky only.
 /roles.yml @KyPython
+
+# Spec-author delegations (SAD): Ky only.
+/delegations.yml @KyPython
