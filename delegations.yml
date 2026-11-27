@@ -1,0 +1,14 @@
+# Spec-author delegations (SAD, specs/spec-author-delegation-check). Owner-only: only Ky changes this file,
+# and never in the same PR as the spec it authorizes. The policy job reads it from main.
+# One record per delegation, keyed by a record id:
+#   <id>:
+#     identity: <one exact spec-author identity from roles.yml, not standing>
+#     repository: <owner/name>
+#     issue: <issue number recording the request>
+#     spec_folders:
+#       - specs/<slug>
+#     issued: <ISO 8601 date-time with timezone>
+#     expires: <ISO 8601 date-time, at most 30 days after issued (decision D4 on #238)>
+#     revoked: false
+version: 1
+delegations: {}
