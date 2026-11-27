@@ -1199,8 +1199,10 @@ jobs:
                                       if not timely:
                                           fail("DELEGATION_AFTER_PR_OPENED")
                                           continue
+                                      # SAD-3.4, SAD-4.3, SAD-4.4: say what was shown and what it allows, nothing stronger.
                                       ok(f"role gate: delegation matched on the base branch for {where}, spec folder {folder} (record {timely[0]}); "
-                                         "identities are self-declared, not verified")
+                                         "recorded on the base branch by an owner-identity merge, not an owner-signed approval; "
+                                         f"authorizes only a spec-only change under {folder}; identities are self-declared, not verified")
                       elif history is not None and opener:
                           ok("role gate: spec authors on this PR are the owner or standing (roles.spec-author.standing); no delegation needed")
               for owner_only in ("roles.yml", "delegations.yml"):
