@@ -19,7 +19,7 @@ from sad_harness import (
     SadRepo,
     delegation_yaml,
 )
-from test_policy import KY
+from test_policy import KIRO, KY
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = (ROOT / "specs/spec-author-delegation-check/scenarios.md").read_text()
@@ -48,9 +48,10 @@ class Harness(unittest.TestCase):
         self.assertIn("only the spec-author role", out)
 
     def test_SAD_6_1_harness_passes_a_legitimate_spec_author_today(self):
-        # Positive control for the harness: an enrolled spec author's spec-only PR passes the current gate.
+        # Positive control for the harness: a standing spec author's spec-only PR passes the gate.
+        # Uses Kiro (standing, SAD-5.2) so the control stays valid once T3 requires delegations.
         r = self.repo(); r.write({"specs/x/requirements.md": SPEC_TEXT})
-        code, out = r.run_policy(body="Relates to #1", title="docs(spec): x", author=DELEGATE, opener=DELEGATE[0])
+        code, out = r.run_policy(body="Relates to #1", title="docs(spec): x", author=KIRO, opener=KIRO[0])
         self.assertEqual(code, 0, out)
 
     def test_SAD_6_3_a_broken_policy_script_is_detected(self):
@@ -80,7 +81,7 @@ class Harness(unittest.TestCase):
         self.assertEqual(r.base, sha)
         text = (r.dir / DELEGATIONS_PATH).read_text()
         self.assertIn("identity: delegate-bot[bot]", text)
-        self.assertIn("spec_folders: [specs/x]", text)
+        self.assertIn("spec_folders:\n      - specs/x", text)
         self.assertIn("revoked: false", text)
 
     def test_SAD_6_2_pr_created_at_reaches_the_policy_environment(self):
