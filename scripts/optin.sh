@@ -177,7 +177,7 @@ if [ -d .systems-thinking/contracts ]; then
   "pattern": "Governance rules lived only in LamportLogic, so agent changes elsewhere could merge without the same checks.",
   "structure": "Each repository carried its own partial CI; there was no shared, versioned gate or required check binding agents to the rules.",
   "archetype": "Shifting the Burden: per-repo manual review compensates for a missing structural gate.",
-  "intervention": "Call the SHA-pinned reusable workflow from KyPython/ai-governance and require its verdict plus this repo's CI on main (checks are the gate; only Ky merges). Fixed agent roles from roles.yml: Kiro writes specs, coders implement specs already on main.",
+  "intervention": "Call the SHA-pinned reusable workflow from KyPython/ai-governance and require its verdict plus this repo's CI on main (checks are the gate; only Ky merges). Fixed agent roles from roles.yml: spec authors enrolled in roles.yml write specs (today Kiro, with Ky as owner override), coders implement specs already on main.",
   "leading_indicators": "Every PR shows a green or red 'ai-governance / verdict' check and a scorecard; code PRs cite a spec on main and tests trace to its IDs.",
   "transfer": "Opt any repository in with ai-governance/scripts/optin.sh so all agent-touched repos share one gate."
 }
@@ -189,7 +189,7 @@ gitc push -q origin "$BRANCH"
 PR_BODY="Opts this repo into the shared AI governance gate from [$GOV_REPO](https://github.com/$GOV_REPO) (pinned to \`$GOV_SHA\`).
 
 - \`.github/workflows/ai-governance.yml\` calls the reusable gate (install, lint, type-check, test, build, policy, gitleaks) on PRs and pushes to \`$DEFAULT_BRANCH\`.
-- \`AGENTS.md\` gains the canonical \`AI-GOVERNANCE:v1\` section all agents must follow. Rule 2 sets fixed roles from \`roles.yml\`: Kiro writes specs, coders implement specs already on main (one task per PR, cross-reviewed), and Ky merges.
+- \`AGENTS.md\` gains the canonical \`AI-GOVERNANCE:v1\` section all agents must follow. Rule 2 sets fixed roles from \`roles.yml\`: spec authors enrolled in \`roles.yml\` write specs (today Kiro, with Ky as owner override), coders implement specs already on main (one task per PR, cross-reviewed), and Ky merges.
 - The gate includes the **spec gate**: a code PR needs an issue, a \`Spec: specs/<slug>\` that already exists on the default branch, no spec edits, and tests citing its criterion IDs. It also includes the **role gate**: only spec authors may touch \`specs/\` or \`.kiro/specs/\`. Each run publishes a scorecard (\`ai-governance-summary\` artifact).
 - This PR changes only a workflow, docs, CODEOWNERS and a contract, so it is exempt from the spec gate by path rule.
 
