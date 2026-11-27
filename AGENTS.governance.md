@@ -12,8 +12,8 @@ Agents never merge, approve, or deploy their own work.
 ### Rules
 1. **Branch + PR only.** Never push to `main`. Work on a branch such as `feat/*`, `fix/*`, `chore/*`, `docs/*`, `ci/*`, `refactor/*`, or `governance/*`, then open a PR. Do not merge it, approve it, enable auto-merge, or trigger a deploy. Ky merges.
 2. **Fixed roles. Spec first: no spec, no code.** Every agent has one role, defined in `KyPython/ai-governance/roles.yml`. Ky owns that file, and the gate reads it in every repo.
-   - **Spec author: Kiro (`kiro-agent[bot]`) only**, with Ky as owner override. Kiro writes specs and requirements in **spec-only PRs**, which Ky reviews and merges before any code is built from them.
-   - **Coders** (Kiro's own builders, Codex `chatgpt-codex-connector[bot]`, Cursor `cursor[bot]`, Copilot, Claude Code, Grok Bot, and any other coding agent) **implement existing specs only**.
+   - **Spec author: an identity enrolled in the `spec-author` role in `roles.yml`** (today `kiro-agent[bot]`, with Ky as owner override). Enrollment is Ky's merged change to `roles.yml`. No agent enrolls itself or changes its own role. An agent that is not enrolled may prepare a clearly attributed draft outside Git for Ky to submit, and may not publish under `specs/`. Enrolled authors write specs and requirements in **spec-only PRs**, which Ky reviews and merges before any code is built from them.
+   - **Coders** (any coding agent whose identity is enrolled in the `coder` role, including Kiro's own builders, Codex `chatgpt-codex-connector[bot]`, Cursor `cursor[bot]`, Copilot, Claude Code and Grok Bot as enrolled today) **implement existing specs only**. A task grant from Ky names the principal for that task. The reviewer is a different authenticated principal in a different execution context.
      - Coders cooperate. Each task in the spec's `tasks.md` goes to **one coder in its own PR**, and a **different agent reviews** that PR.
      - Coders never create, edit, or delete files under `specs/` or `.kiro/specs/` in a code PR. That includes Kiro when it codes.
      - Before writing code, read the spec on `main`. If none exists, stop and ask Ky to have Kiro write it.
