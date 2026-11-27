@@ -96,7 +96,7 @@ class SadRepo(Repo):
     def commit_time(self, sha):
         return sh(self.dir, "git", "show", "-s", "--format=%cI", sha)
 
-    def run_policy(self, pr_created_at=None, script=None, delegations=None, **kwargs):
+    def run_policy(self, pr_created_at=None, script=None, delegations=None, extra_env=None, **kwargs):
         """Run the real policy script.
 
         `pr_created_at` is passed as PR_CREATED_AT (for the T3 timing check). `delegations` overrides the
@@ -106,6 +106,7 @@ class SadRepo(Repo):
         extra = {"DELEGATIONS_FILE": str(self.sad_delegations if delegations is None else delegations)}
         if pr_created_at:
             extra["PR_CREATED_AT"] = pr_created_at
+        extra.update(extra_env or {})
         saved = {k: os.environ.get(k) for k in extra}
         try:
             os.environ.update(extra)
@@ -117,6 +118,36 @@ class SadRepo(Repo):
                     os.environ.pop(k, None)
                 else:
                     os.environ[k] = v
+
+
+class GovHistory:
+    """A local stand-in for KyPython/ai-governance `main`: a git repo whose delegations.yml history is controlled.
+
+    The policy job reads the delegation file and its first-parent history from DELEGATIONS_GIT (SAD-2.5).
+    Tests point DELEGATIONS_GIT at this repo and DELEGATIONS_FILE at its working copy.
+    """
+
+    def __init__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        sh(self.dir, "git", "init", "-q", "-b", "main")
+        self.file = self.dir / DELEGATIONS_PATH
+        self.commit(EMPTY_DELEGATIONS, "2026-01-01T00:00:00+00:00")
+
+    def commit(self, text, when, author=KY):
+        self.file.write_text(text)
+        env = dict(os.environ, **GIT_ISOLATION, GIT_AUTHOR_NAME=author[0], GIT_AUTHOR_EMAIL=author[1],
+                   GIT_COMMITTER_NAME=author[0], GIT_COMMITTER_EMAIL=author[1],
+                   GIT_AUTHOR_DATE=when, GIT_COMMITTER_DATE=when)
+        sh(self.dir, "git", "add", "-A")
+        sh(self.dir, "git", "commit", "-q", "--allow-empty", "-m", "delegations", env=env)
+        return sh(self.dir, "git", "rev-parse", "HEAD")
+
+    def env(self):
+        return {"DELEGATIONS_GIT": str(self.dir)}
+
+    def cleanup(self):
+        self.tmp.cleanup()
 
 
 def _policy_with(repo, script, **kwargs):
@@ -143,6 +174,7 @@ __all__ = [
     "POLICY",
     "ROLES_WITH_DELEGATE",
     "SCENARIO_TASK",
+    "GovHistory",
     "SadRepo",
     "delegation_yaml",
 ]
