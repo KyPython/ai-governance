@@ -22,6 +22,11 @@ roles:
       - kiro-agent[bot]   # enrolled; Kiro's spec author
       - KyPython          # owner override
       # Further identities: one line each, added only by Ky's merged change, with the delegation issue in a comment.
+    # Standing spec authors need no delegation (SAD-1.2, SAD-5.2; decisions D1, D2 on #238). Any other
+    # spec author needs an issue-specific delegation in delegations.yml. Owner-only, like this file.
+    standing:
+      - kiro-agent[bot]
+      - KyPython
   coder:
     description: Implements existing specs only, one task per PR, reviewed by a different agent. Never writes or edits specs in a code PR. The identities below are an enrollment list, not a permanent appointment; a task grant from Ky names the principal for that task.
     identities:

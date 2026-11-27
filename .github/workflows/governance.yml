@@ -593,6 +593,8 @@ jobs:
           REPO: ${{ github.repository }}
           # Single role map owned by Ky; read from main so role changes apply everywhere at once.
           ROLES_URL: https://raw.githubusercontent.com/KyPython/ai-governance/main/roles.yml
+          # Spec-author delegations (SAD), owner-only, read from main; fetched only when a delegation-required identity touches specs.
+          DELEGATIONS_URL: https://raw.githubusercontent.com/KyPython/ai-governance/main/delegations.yml
           # GitHub attributes a commit to the account that owns the author email. The policy
           # step asks for that login; unit tests leave this unset and use declared git fields.
           RESOLVE_GITHUB_LOGINS: "true"
@@ -672,12 +674,93 @@ jobs:
                       raise ValueError(f"roles.yml requires roles.{role}.identities as a nonempty list of strings")
                   return {v.strip().lower() for v in raw}
               SPEC_AUTHORS, CODERS, OWNER = ids_of("spec-author"), ids_of("coder"), owner_value.strip().lower()
+              # SAD-1.2/1.4/5.2: standing spec authors need no delegation; every other spec author does.
+              spec_def = role_defs.get("spec-author") if isinstance(role_defs, dict) else None
+              raw_standing = spec_def.get("standing") if isinstance(spec_def, dict) else None
+              if raw_standing is None:
+                  STANDING = set()
+              elif not isinstance(raw_standing, list) or any(not isinstance(v, str) or not v.strip() for v in raw_standing):
+                  raise ValueError("roles.yml roles.spec-author.standing must be a list of identities")
+              else:
+                  STANDING = {v.strip().lower() for v in raw_standing}
+                  stray = sorted(STANDING - SPEC_AUTHORS)
+                  if stray:
+                      raise ValueError("roles.yml roles.spec-author.standing names identities that are not enrolled spec authors: " + ", ".join(stray))
               spec_dirs = [d.strip().strip("/") for d in paths]
               ok(f"role map loaded from {roles_src}: spec authors = {', '.join(sorted(SPEC_AUTHORS))}")
           except Exception as e:
-              roles = None; SPEC_AUTHORS, CODERS, OWNER = set(), set(), ""
+              roles = None; SPEC_AUTHORS, CODERS, OWNER, STANDING = set(), set(), "", set()
               spec_dirs = ["specs", ".kiro/specs"]
               err(f"Role map could not be loaded from {roles_src or 'roles.yml'} ({e}). The gate fails closed without it.")
+
+          # 0b. Delegation file (KyPython/ai-governance/delegations.yml, SAD-2). Read lazily, only when needed.
+          DELEG_FIELDS = ("identity", "repository", "issue", "spec_folders", "issued", "expires", "revoked")
+          DELEG_MAX_DAYS = 30  # decision D4 on KyPython/ai-governance#238
+          def validate_delegations(text):
+              from datetime import datetime, timedelta
+              data = parse_roles(text)
+              if not isinstance(data, dict) or "delegations" not in data:
+                  raise ValueError("requires a top-level `delegations` map")
+              recs = data["delegations"]
+              if recs == "{}":
+                  return {}
+              if not isinstance(recs, dict):
+                  raise ValueError("`delegations` must be a map of record ids")
+              def when(rid, field, value):
+                  try:
+                      d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                  except ValueError:
+                      raise ValueError(f"record {rid}: {field} is not an ISO 8601 date-time") from None
+                  if d.tzinfo is None:
+                      raise ValueError(f"record {rid}: {field} needs a timezone")
+                  return d
+              out = {}
+              for rid, rec in recs.items():
+                  if not isinstance(rec, dict):
+                      raise ValueError(f"record {rid or '(empty id)'} is not a map")
+                  missing = [f for f in DELEG_FIELDS if f not in rec]
+                  if missing:
+                      raise ValueError(f"record {rid} is missing {', '.join(missing)}")
+                  ident = rec["identity"]
+                  if not isinstance(ident, str) or not ident.strip() or re.search(r"[*?\[\]]", ident.replace("[bot]", "")):
+                      raise ValueError(f"record {rid}: identity must be one exact identity, not a pattern")
+                  if not isinstance(rec["repository"], str) or not re.fullmatch(r"[\w.-]+/[\w.-]+", rec["repository"]):
+                      raise ValueError(f"record {rid}: repository must be owner/name")
+                  if not isinstance(rec["issue"], str) or not rec["issue"].isdigit():
+                      raise ValueError(f"record {rid}: issue must be an issue number")
+                  folders_ = rec["spec_folders"]
+                  if not isinstance(folders_, list) or not folders_ or any(not isinstance(x, str) or not x.strip() for x in folders_):
+                      raise ValueError(f"record {rid}: spec_folders must be a nonempty list")
+                  if rec["revoked"] not in ("true", "false"):
+                      raise ValueError(f"record {rid}: revoked must be true or false")
+                  issued, expires = when(rid, "issued", rec["issued"]), when(rid, "expires", rec["expires"])
+                  if expires <= issued:
+                      raise ValueError(f"record {rid}: expires must be after issued")
+                  if expires - issued > timedelta(days=DELEG_MAX_DAYS):
+                      raise ValueError(f"record {rid}: lifetime exceeds the {DELEG_MAX_DAYS}-day maximum")
+                  out[rid] = rec
+              return out
+
+          _deleg = {}
+          def load_delegations():
+              """(records, error, source). Records come only from main (or DELEGATIONS_FILE in tests), never the PR head."""
+              if "v" not in _deleg:
+                  src = os.environ.get("DELEGATIONS_FILE") or os.environ.get("DELEGATIONS_URL", "")
+                  try:
+                      if os.environ.get("DELEGATIONS_FILE"):
+                          text = Path(src).read_text()
+                      else:
+                          import urllib.request
+                          req = urllib.request.Request(src, headers={"User-Agent": "ai-governance-policy"})
+                          token = os.environ.get("ROLES_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+                          if token:
+                              req.add_header("Authorization", f"Bearer {token}")
+                          with urllib.request.urlopen(req, timeout=20) as r:
+                              text = r.read().decode("utf-8")
+                      _deleg["v"] = (validate_delegations(text), None, src)
+                  except Exception as e:
+                      _deleg["v"] = (None, f"{type(e).__name__}: {e}", src)
+              return _deleg["v"]
 
           # 1. AGENTS.md present and points at the canonical governance rules.
           agents = Path("AGENTS.md")
@@ -828,7 +911,7 @@ jobs:
               def exempt(f):
                   return bool(DOC_RE.search(f) or META_RE.search(f) or CONFIG_RE.search(f) or LOCK_RE.search(f)
                               or re.search(r"(^|/)requirements[\w.-]*\.txt$", f) or dependency_only_manifest(f)
-                              or (os.environ.get("REPO") == "KyPython/ai-governance" and f == "roles.yml"))
+                              or (os.environ.get("REPO") == "KyPython/ai-governance" and f in ("roles.yml", "delegations.yml")))
 
               code = [f for f in changed if not exempt(f)]
               spec_changes = [f for f in changed if any(f.startswith(d + "/") for d in spec_dirs)]
@@ -985,12 +1068,37 @@ jobs:
                           "Not spec authors: " + "; ".join(bad) + ". Coders implement existing specs; Kiro writes them.")
                   elif history is not None and opener:
                       ok("role gate: every PR opener/commit identity that touched specs is a spec author (self-declared, not verified)")
-              if os.environ.get("REPO") == "KyPython/ai-governance" and "roles.yml" in changed:
-                  bad = [label for label, ids in people if OWNER not in ids]
-                  if bad:
-                      err(f"Role gate: roles.yml may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
-                  elif history is not None and opener:
-                      ok("role gate: roles.yml changed by the owner identity only (self-declared, not verified)")
+                  # SAD-1.1/1.4/3.1: a spec author that is neither the owner nor standing needs a delegation.
+                  if not bad and SPEC_AUTHORS:
+                      exempt_ids = STANDING | {OWNER}
+                      needs = [label for label, ids in people if ids & SPEC_AUTHORS and not ids & exempt_ids]
+                      touched = sorted({d + "/" + f[len(d) + 1:].split("/", 1)[0] for f in spec_changes for d in spec_dirs if f.startswith(d + "/")})
+                      if needs:
+                          recs, derr, dsrc = load_delegations()
+                          if derr is not None:
+                              err("Role gate: DELEGATION_UNREADABLE - the delegation file " + (dsrc or "delegations.yml") + " could not be read or is invalid (" + derr + "). "
+                                  "Delegation-required identities: " + "; ".join(needs) + ". Spec folders: " + ", ".join(touched) + ". Failing closed.")
+                          else:
+                              ok(f"role gate: delegation file read and valid ({len(recs)} records) for " + "; ".join(needs)
+                                 + "; matching records to this PR is not enforced yet (SAD T3)")
+                      elif history is not None and opener:
+                          ok("role gate: spec authors on this PR are the owner or standing (roles.spec-author.standing); no delegation needed")
+              for owner_only in ("roles.yml", "delegations.yml"):
+                  if os.environ.get("REPO") == "KyPython/ai-governance" and owner_only in changed:
+                      bad = [label for label, ids in people if OWNER not in ids]
+                      if bad:
+                          err(f"Role gate: {owner_only} may only be changed by the owner ({OWNER}). Not the owner: " + "; ".join(bad))
+                      elif history is not None and opener:
+                          ok(f"role gate: {owner_only} changed by the owner identity only (self-declared, not verified)")
+              # SAD-2.2: the owner cannot merge a delegation file the gate would later refuse to read.
+              if os.environ.get("REPO") == "KyPython/ai-governance" and "delegations.yml" in changed:
+                  try:
+                      if not Path("delegations.yml").is_file():
+                          raise ValueError("file deleted; keep it with `delegations: {}` instead")
+                      n = len(validate_delegations(Path("delegations.yml").read_text()))
+                      ok(f"delegation file: delegations.yml is valid ({n} records)")
+                  except Exception as e:
+                      err(f"Delegation file: delegations.yml is invalid ({e}).")
               if code:
                   authorized = CODERS | {OWNER}
                   bad = [label for label, ids in people if not ids & authorized]
