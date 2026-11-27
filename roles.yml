@@ -43,3 +43,4 @@ roles:
     description: Ky reviews and merges by hand. Agents never merge (AGENTS.md rule). Not enforced by required approvals, because every agent PR appears as KyPython.
     identities:
       - KyPython
+# T6 real-run control (draft PR #328, never merged)
