@@ -26,6 +26,6 @@ jobs:
       contents: read
       checks: write
       pull-requests: write
-    uses: KyLamportLogic/buildlogic-governance/.github/workflows/diff-hygiene.reusable.yml@c9edd8f567bc8c800f4a3bb92b032ffedfc52329 # main
+    uses: KyLamportLogic/buildlogic-governance/.github/workflows/diff-hygiene.reusable.yml@2a8f1820a493260cb9faea7fa86cf8a5eee8ed28 # main
     with:
       governance-ref: c9edd8f567bc8c800f4a3bb92b032ffedfc52329
